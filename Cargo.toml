@@ -9,3 +9,8 @@ license = "AGPL-3.0-only"
 
 [dependencies]
 clap = { version = "4.5.4", features = ["derive"] }
+
+[dev-dependencies]
+assert_cmd = "2.0.14"
+predicates = "3.1.0"
+assert_fs = "1.1.1"
