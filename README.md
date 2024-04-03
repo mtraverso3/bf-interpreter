@@ -1,6 +1,6 @@
 ## Brainfuck Interpreter
 
-This repo contains a small CLI tool that interprets Brainfuck programs.
+This repo contains a small CLI tool that interprets [Brainfuck](https://en.wikipedia.org/wiki/Brainfuck) programs.
 
 ### Building
 This project is written in Rust and can be easily built from source.
