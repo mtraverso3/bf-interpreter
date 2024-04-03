@@ -4,10 +4,9 @@ use std::io::{Read, Write};
 use clap::Parser;
 
 
-
 /// A simple program to interpret Brainfuck programs.
 #[derive(Parser)]
-#[command(about, version)]
+#[command(about, version, author)]
 struct Cli {
     /// A Brainfuck program to interpret
     #[arg(short, long)]
@@ -116,7 +115,7 @@ fn main() {
                             count -= 1;
                         }
                     }
-                    i+= 1;
+                    i += 1;
                     continue;
                 } else {
                     jump_markers.push(i + 1); //i+1 to jump to the command after the matching ]
