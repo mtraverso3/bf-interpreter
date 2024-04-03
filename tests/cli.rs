@@ -6,7 +6,7 @@ use assert_fs::prelude::*;
 #[test]
 fn test_hello_world() -> Result<(), Box<dyn std::error::Error>> {
     let mut cmd = Command::cargo_bin("brainfuck-interpreter")?;
-    cmd.arg("--input").arg("tests/programs/hello_world.b");
+    cmd.arg("--input").arg("tests/programs/hello_world.bf");
 
     cmd.assert().stdout(predicate::eq("Hello World!\n")).success();
     Ok(())
@@ -15,7 +15,7 @@ fn test_hello_world() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn test_print_no_loop() -> Result<(), Box<dyn std::error::Error>> {
     let mut cmd = Command::cargo_bin("brainfuck-interpreter")?;
-    cmd.arg("--input").arg("tests/programs/print_no_loop.b");
+    cmd.arg("--input").arg("tests/programs/print_no_loop.bf");
 
     cmd.assert().stdout(predicate::eq("A")).success();
     Ok(())
@@ -23,7 +23,7 @@ fn test_print_no_loop() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_wrapping_off() -> Result<(), Box<dyn std::error::Error>> {
-    let file = assert_fs::NamedTempFile::new("wrapping-off.b")?;
+    let file = assert_fs::NamedTempFile::new("wrapping-off.bf")?;
     file.write_str("<")?;
 
     let mut cmd = Command::cargo_bin("brainfuck-interpreter")?;
@@ -35,7 +35,7 @@ fn test_wrapping_off() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn test_wrapping_on() -> Result<(), Box<dyn std::error::Error>> {
-    let file = assert_fs::NamedTempFile::new("wrapping-on.b")?;
+    let file = assert_fs::NamedTempFile::new("wrapping-on.bf")?;
 
     // set a cell to a value and print it by wrapping back around to it
     let a_sum = String::from_utf8(vec![b'+'; 65]);
