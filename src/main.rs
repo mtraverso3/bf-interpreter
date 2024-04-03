@@ -1,7 +1,8 @@
 use std::fs::File;
-use std::io;
+use std::{io, process};
 use std::io::{Read, Write};
 use clap::Parser;
+use colored::Colorize;
 
 
 /// A simple program to interpret Brainfuck programs.
@@ -28,16 +29,26 @@ struct Cli {
 fn main() {
     let args: Cli = Cli::parse();
 
-    // Try to open passed in file
-    let mut file = File::open(args.input).expect("Unable to open input file.");
+    // Try to open and read passed in file
+    let mut file = File::open(args.input).unwrap_or_else(|err| {
+        eprintln!("{}", format!("Error: Unable to open input file: {err}").red());
+        process::exit(1);
+    });
+
     let mut program = String::new();
-    file.read_to_string(&mut program).expect("Unable to read input file.");
+    file.read_to_string(&mut program).unwrap_or_else(|err| {
+        eprintln!("{}", format!("Error: Unable to read input file: {err}").red());
+        process::exit(1);
+    });
 
     //Create output file if argument is present
     let mut out_writer = match args.output {
         None => Box::new(io::stdout()) as Box<dyn Write>,
         Some(output_path) => {
-            let file = File::create(output_path).expect("Unable to create output file.");
+            let file = File::create(output_path).unwrap_or_else(|err| {
+                eprintln!("{}", format!("Error: Unable to create output file: {err}").red());
+                process::exit(1);
+            });
             Box::new(file) as Box<dyn Write>
         }
     };
@@ -71,7 +82,8 @@ fn main() {
                     if args.wrapping {
                         0
                     } else {
-                        panic!("Data pointer out of bounds (overflow)")
+                        eprintln!("{}", format!("Error: Data pointer out of bounds (overflow) at position {i}").red());
+                        process::exit(1);
                     }
                 } else {
                     data_pointer + 1
@@ -82,7 +94,8 @@ fn main() {
                     if args.wrapping {
                         args.size - 1
                     } else {
-                        panic!("Data pointer out of bounds (underflow)")
+                        eprintln!("{}", format!("Error: Data pointer out of bounds (underflow) at position {i}").red());
+                        process::exit(1);
                     }
                 } else {
                     data_pointer - 1
@@ -96,11 +109,17 @@ fn main() {
             }
             '.' => { // Output the character at the memory cell at the pointer
                 let output = memory[data_pointer] as char;
-                out_writer.write(&[output as u8]).expect("Unable to write to output");
+                out_writer.write(&[output as u8]).unwrap_or_else(|err| {
+                    eprintln!("{}", format!("Error: Unable to write to output file: {err}").red());
+                    process::exit(1);
+                });
             }
             ',' => { // Input a character and store it in the memory cell at the pointer
                 let mut input = String::new();
-                io::stdin().read_line(&mut input).expect("Failed to read line");
+                io::stdin().read_line(&mut input).unwrap_or_else(|err| {
+                    eprintln!("{}", format!("Error: Unable to read from stdin: {err}").red());
+                    process::exit(1);
+                });
                 memory[data_pointer] = input.chars().next().unwrap() as u8;
             }
             '[' => {
