@@ -1,9 +1,9 @@
-use std::fs::File;
-use std::io::Write;
+use std::io::{Read, Write};
 use std::{io, process};
 
 use colored::Colorize;
 
+use crate::io_utils::create_output_writer;
 use crate::parser::Node;
 
 pub fn interpret(
@@ -13,19 +13,7 @@ pub fn interpret(
     size: usize,
     debug: bool,
 ) {
-    let mut out_writer: Box<dyn Write> = match output_path {
-        None => Box::new(io::stdout()),
-        Some(path) => {
-            let file = File::create(path).unwrap_or_else(|err| {
-                eprintln!(
-                    "{}",
-                    format!("Error: Unable to create output file: {err}").red()
-                );
-                process::exit(1);
-            });
-            Box::new(file)
-        }
-    };
+    let mut out_writer = create_output_writer(output_path);
 
     let mut memory: Vec<u8> = vec![0; size];
     let mut dp: usize = 0;
@@ -99,15 +87,15 @@ fn run(
                 });
             }
             Node::Input => {
-                let mut input = String::new();
-                io::stdin().read_line(&mut input).unwrap_or_else(|err| {
+                let mut byte = [0_u8; 1];
+                let bytes_read = io::stdin().read(&mut byte).unwrap_or_else(|err| {
                     eprintln!(
                         "{}",
                         format!("Error: Unable to read from stdin: {err}").red()
                     );
                     process::exit(1);
                 });
-                memory[*dp] = input.bytes().next().unwrap_or(0);
+                memory[*dp] = if bytes_read == 0 { 0 } else { byte[0] };
             }
             Node::Loop(body) => {
                 while memory[*dp] != 0 {

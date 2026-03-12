@@ -1,51 +1,75 @@
 ## Brainfuck Interpreter & Compiler
 
-This repo contains a small CLI tool that interprets [Brainfuck](https://en.wikipedia.org/wiki/Brainfuck) programs and can compile them to AArch64 (ARM64) assembly.
+This repository contains a Brainfuck CLI with two modes:
+
+- `interpret`: run Brainfuck programs directly.
+- `compile`: compile Brainfuck programs to either LLVM IR or AArch64 Linux assembly.
+
+The parser builds an AST first, then both execution backends operate on that AST.
 
 ### Building
-This project is written in Rust and can be easily built from source.
 
-Build the binary by running:
 ```bash
 cargo build --release
 ```
 
-Once built, the binary can be found at `./target/release/brainfuck`.
+Binary path:
+
+- `./target/release/brainfuck-interpreter`
 
 ### Usage
 
-The tool has two subcommands: `interpret` and `compile`.
-
-#### Interpret
-
-Run a Brainfuck program directly:
+#### Interpret mode
 
 ```bash
-./brainfuck interpret --input /path/to/program.bf
+./target/release/brainfuck-interpreter interpret --input /path/to/program.bf
 ```
 
-Available flags:
+Flags:
 
-- `-i, --input <INPUT>`: Path to the Brainfuck source file *(required)*
-- `-o, --output <OUTPUT>`: Optional file to write output to. Defaults to stdout
-- `-w, --wrapping`: Enable wrapping of the data pointer at tape boundaries
-- `-s, --size <SIZE>`: Size of the memory tape in cells [default: 30000]
-- `-d, --debug`: Print the memory tape state at each instruction
+- `-i, --input <INPUT>`: Brainfuck source file path (required)
+- `-o, --output <OUTPUT>`: optional output file (defaults to stdout)
+- `-w, --wrapping`: enable data pointer wrapping at tape boundaries
+- `-s, --size <SIZE>`: tape size in cells (default: `30000`, must be `> 0`)
+- `-d, --debug`: print interpreter state at each instruction
 
-#### Compile
+`','` input semantics in interpreter are byte-based: read exactly one byte from stdin (EOF maps to `0`).
 
-Compile a Brainfuck program to AArch64 assembly:
+#### Compile mode
 
 ```bash
-./brainfuck compile --input /path/to/program.bf --output out.s
+./target/release/brainfuck-interpreter compile --input /path/to/program.bf
 ```
 
-Available flags:
+Flags:
 
-- `-i, --input <INPUT>`: Path to the Brainfuck source file *(required)*
-- `-o, --output <OUTPUT>`: Optional file to write the assembly output to. Defaults to stdout
+- `-i, --input <INPUT>`: Brainfuck source file path (required)
+- `-o, --output <OUTPUT>`: optional output file (defaults to stdout)
+- `-t, --target <TARGET>`: output target (`llvm` default, `arm` optional)
+- `-w, --wrapping`: emit wrapping pointer behavior in generated code
+- `-s, --size <SIZE>`: tape size in cells (default: `30000`, must be `> 0`)
 
-The generated `.s` file can then be assembled and linked on a Linux AArch64 system:
+### Targets
+
+#### LLVM IR (default)
+
+Generate `.ll` and build with clang:
+
+```bash
+./target/release/brainfuck-interpreter compile --input my.bf --output out.ll
+clang -O2 -o program out.ll
+./program
+```
+
+#### AArch64 Linux assembly
+
+Generate `.s` for AArch64 Linux:
+
+```bash
+./target/release/brainfuck-interpreter compile --target arm --input my.bf --output out.s
+```
+
+Assemble and link on an AArch64 Linux system:
 
 ```bash
 as -o out.o out.s
@@ -53,6 +77,6 @@ ld -o program out.o
 ./program
 ```
 
-### Licence
+### License
 
-This project is licensed under the GNU AGPL v3.0 license—see the [LICENSE](LICENSE) file for details.
+This project is licensed under the GNU AGPL v3.0 license. See [LICENSE](LICENSE).

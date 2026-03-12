@@ -8,6 +8,7 @@ use colored::Colorize;
 mod compile_arm;
 mod compile_llvm;
 mod interpreter;
+mod io_utils;
 mod parser;
 
 /// Compilation output target.
@@ -62,6 +63,14 @@ enum Command {
         #[arg(short, long)]
         output: Option<String>,
 
+        /// Enable wrapping of the data pointer at tape boundaries.
+        #[arg(short, long)]
+        wrapping: bool,
+
+        /// Size of the memory tape in cells.
+        #[arg(short, long, default_value_t = 30000)]
+        size: usize,
+
         /// Output target format.
         #[arg(short, long, value_enum, default_value = "llvm")]
         target: Target,
@@ -79,6 +88,7 @@ fn main() {
             size,
             debug,
         } => {
+            validate_size(size);
             let source = read_program(&input);
             let nodes = parse(&source);
             interpreter::interpret(&nodes, output, wrapping, size, debug);
@@ -86,15 +96,25 @@ fn main() {
         Command::Compile {
             input,
             output,
+            wrapping,
+            size,
             target,
         } => {
+            validate_size(size);
             let source = read_program(&input);
             let nodes = parse(&source);
             match target {
-                Target::Llvm => compile_llvm::compile_llvm(&nodes, output),
-                Target::Arm => compile_arm::compile_arm(&nodes, output),
+                Target::Llvm => compile_llvm::compile_llvm(&nodes, output, size, wrapping),
+                Target::Arm => compile_arm::compile_arm(&nodes, output, size, wrapping),
             }
         }
+    }
+}
+
+fn validate_size(size: usize) {
+    if size == 0 {
+        eprintln!("{}", "Error: Tape size must be greater than 0".red());
+        process::exit(1);
     }
 }
 

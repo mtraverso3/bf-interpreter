@@ -1,6 +1,7 @@
 use assert_cmd::prelude::*;
 use assert_fs::prelude::*;
 use predicates::prelude::*;
+use std::io::Write;
 use std::process::Command;
 
 // ── interpret ─────────────────────────────────────────────────────────────────
@@ -148,6 +149,41 @@ fn interpret_debug_flag_does_not_crash() -> Result<(), Box<dyn std::error::Error
     Ok(())
 }
 
+#[test]
+fn interpret_input_reads_single_byte() -> Result<(), Box<dyn std::error::Error>> {
+    let file = assert_fs::NamedTempFile::new("read-byte.bf")?;
+    file.write_str(",.")?;
+
+    let mut cmd = Command::cargo_bin("brainfuck-interpreter")?;
+    cmd.args(["interpret", "--input", file.path().to_str().unwrap()]);
+    cmd.stdin(std::process::Stdio::piped());
+    cmd.stdout(std::process::Stdio::piped());
+
+    let mut child = cmd.spawn()?;
+    child.stdin.take().unwrap().write_all(b"AB\n")?;
+    let output = child.wait_with_output()?;
+
+    assert!(output.status.success());
+    assert_eq!(output.stdout, b"A");
+    Ok(())
+}
+
+#[test]
+fn interpret_size_zero_fails_validation() -> Result<(), Box<dyn std::error::Error>> {
+    let mut cmd = Command::cargo_bin("brainfuck-interpreter")?;
+    cmd.args([
+        "interpret",
+        "--input",
+        "tests/programs/print_no_loop.bf",
+        "--size",
+        "0",
+    ]);
+    cmd.assert()
+        .failure()
+        .stderr(predicate::str::contains("Tape size must be greater than 0"));
+    Ok(())
+}
+
 // ── compile --target arm ──────────────────────────────────────────────────────
 
 #[test]
@@ -177,6 +213,45 @@ fn compile_arm_output_to_file() -> Result<(), Box<dyn std::error::Error>> {
 
     out.assert(predicate::str::contains(".global _start"));
     out.assert(predicate::str::contains("tape:"));
+    Ok(())
+}
+
+#[test]
+fn compile_arm_honors_size_and_non_wrapping_checks() -> Result<(), Box<dyn std::error::Error>> {
+    let mut cmd = Command::cargo_bin("brainfuck-interpreter")?;
+    cmd.args([
+        "compile",
+        "--target",
+        "arm",
+        "--input",
+        "tests/programs/print_no_loop.bf",
+        "--size",
+        "64",
+    ]);
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("tape: .skip 64"))
+        .stdout(predicate::str::contains(".L_oob:"));
+    Ok(())
+}
+
+#[test]
+fn compile_arm_wrapping_omits_oob_handler() -> Result<(), Box<dyn std::error::Error>> {
+    let mut cmd = Command::cargo_bin("brainfuck-interpreter")?;
+    cmd.args([
+        "compile",
+        "--target",
+        "arm",
+        "--input",
+        "tests/programs/print_no_loop.bf",
+        "--wrapping",
+        "--size",
+        "64",
+    ]);
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("tape: .skip 64"))
+        .stdout(predicate::str::contains(".L_oob:").not());
     Ok(())
 }
 
@@ -241,6 +316,41 @@ fn compile_llvm_output_to_file() -> Result<(), Box<dyn std::error::Error>> {
 
     out.assert(predicate::str::contains("define i32 @main()"));
     out.assert(predicate::str::contains("@tape = global [30000 x i8] zeroinitializer"));
+    Ok(())
+}
+
+#[test]
+fn compile_llvm_honors_size_and_non_wrapping_checks() -> Result<(), Box<dyn std::error::Error>> {
+    let mut cmd = Command::cargo_bin("brainfuck-interpreter")?;
+    cmd.args([
+        "compile",
+        "--input",
+        "tests/programs/print_no_loop.bf",
+        "--size",
+        "64",
+    ]);
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("@tape = global [64 x i8] zeroinitializer"))
+        .stdout(predicate::str::contains("oob:"));
+    Ok(())
+}
+
+#[test]
+fn compile_llvm_wrapping_omits_oob_handler() -> Result<(), Box<dyn std::error::Error>> {
+    let mut cmd = Command::cargo_bin("brainfuck-interpreter")?;
+    cmd.args([
+        "compile",
+        "--input",
+        "tests/programs/print_no_loop.bf",
+        "--wrapping",
+        "--size",
+        "64",
+    ]);
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("@tape = global [64 x i8] zeroinitializer"))
+        .stdout(predicate::str::contains("oob:").not());
     Ok(())
 }
 
@@ -311,6 +421,19 @@ fn compile_llvm_input_uses_getchar() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+#[test]
+fn compile_llvm_input_maps_eof_to_zero() -> Result<(), Box<dyn std::error::Error>> {
+    let file = assert_fs::NamedTempFile::new("comma.bf")?;
+    file.write_str(",")?;
+
+    let mut cmd = Command::cargo_bin("brainfuck-interpreter")?;
+    cmd.args(["compile", "--input", file.path().to_str().unwrap()]);
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("select i1").and(predicate::str::contains("i8 0")));
+    Ok(())
+}
+
 // ── compile — shared error handling ──────────────────────────────────────────
 
 #[test]
@@ -338,3 +461,20 @@ fn compile_unmatched_close_bracket_fails() -> Result<(), Box<dyn std::error::Err
         .stderr(predicate::str::contains("Unmatched"));
     Ok(())
 }
+
+#[test]
+fn compile_size_zero_fails_validation() -> Result<(), Box<dyn std::error::Error>> {
+    let mut cmd = Command::cargo_bin("brainfuck-interpreter")?;
+    cmd.args([
+        "compile",
+        "--input",
+        "tests/programs/print_no_loop.bf",
+        "--size",
+        "0",
+    ]);
+    cmd.assert()
+        .failure()
+        .stderr(predicate::str::contains("Tape size must be greater than 0"));
+    Ok(())
+}
+

@@ -1,29 +1,14 @@
-use std::fs::File;
 use std::io::Write;
-use std::{io, process};
 
-use colored::Colorize;
-
+use crate::io_utils::create_output_writer;
 use crate::parser::Node;
 
-pub fn compile_arm(nodes: &[Node], output_path: Option<String>) {
-    let mut out_writer: Box<dyn Write> = match output_path {
-        None => Box::new(io::stdout()),
-        Some(path) => {
-            let file = File::create(path).unwrap_or_else(|err| {
-                eprintln!(
-                    "{}",
-                    format!("Error: Unable to create output file: {err}").red()
-                );
-                process::exit(1);
-            });
-            Box::new(file)
-        }
-    };
+pub fn compile_arm(nodes: &[Node], output_path: Option<String>, tape_size: usize, wrapping: bool) {
+    let mut out_writer = create_output_writer(output_path);
 
     // BSS section — memory tape
     writeln!(out_writer, ".bss").unwrap();
-    writeln!(out_writer, "tape: .skip 30000").unwrap();
+    writeln!(out_writer, "tape: .skip {tape_size}").unwrap();
 
     // Text section — entry point
     writeln!(out_writer, ".text").unwrap();
@@ -34,7 +19,15 @@ pub fn compile_arm(nodes: &[Node], output_path: Option<String>) {
 
     // Emit instructions; label counter is threaded through to keep labels unique
     let mut label_counter: usize = 0;
-    emit(nodes, &mut *out_writer, &mut label_counter);
+    emit(nodes, &mut *out_writer, &mut label_counter, tape_size, wrapping);
+
+    if !wrapping {
+        writeln!(out_writer, ".L_oob:").unwrap();
+        writeln!(out_writer, "mov x0, #1").unwrap();
+        writeln!(out_writer, "mov x8, #93").unwrap();
+        writeln!(out_writer, "svc #0").unwrap();
+        writeln!(out_writer).unwrap();
+    }
 
     // Exit syscall
     writeln!(out_writer, "mov x0, #0").unwrap();
@@ -42,17 +35,48 @@ pub fn compile_arm(nodes: &[Node], output_path: Option<String>) {
     writeln!(out_writer, "svc #0").unwrap();
 }
 
-fn emit(nodes: &[Node], out: &mut dyn Write, counter: &mut usize) {
+fn emit(nodes: &[Node], out: &mut dyn Write, counter: &mut usize, tape_size: usize, wrapping: bool) {
     for node in nodes {
         match node {
             Node::MoveRight => {
                 writeln!(out, "// {}", node.symbol()).unwrap();
-                writeln!(out, "add  x3, x3, #1").unwrap();
+                if wrapping {
+                    let label = *counter;
+                    *counter += 1;
+                    writeln!(out, "ldr  x4, ={}", tape_size - 1).unwrap();
+                    writeln!(out, "cmp  x3, x4").unwrap();
+                    writeln!(out, "beq  .Lwrap_r_{label}").unwrap();
+                    writeln!(out, "add  x3, x3, #1").unwrap();
+                    writeln!(out, "b    .Lwrap_r_done_{label}").unwrap();
+                    writeln!(out, ".Lwrap_r_{label}:").unwrap();
+                    writeln!(out, "mov  x3, #0").unwrap();
+                    writeln!(out, ".Lwrap_r_done_{label}:").unwrap();
+                } else {
+                    writeln!(out, "ldr  x4, ={}", tape_size - 1).unwrap();
+                    writeln!(out, "cmp  x3, x4").unwrap();
+                    writeln!(out, "beq  .L_oob").unwrap();
+                    writeln!(out, "add  x3, x3, #1").unwrap();
+                }
                 writeln!(out).unwrap();
             }
             Node::MoveLeft => {
                 writeln!(out, "// {}", node.symbol()).unwrap();
-                writeln!(out, "sub  x3, x3, #1").unwrap();
+                if wrapping {
+                    let label = *counter;
+                    *counter += 1;
+                    writeln!(out, "cmp  x3, #0").unwrap();
+                    writeln!(out, "beq  .Lwrap_l_{label}").unwrap();
+                    writeln!(out, "sub  x3, x3, #1").unwrap();
+                    writeln!(out, "b    .Lwrap_l_done_{label}").unwrap();
+                    writeln!(out, ".Lwrap_l_{label}:").unwrap();
+                    writeln!(out, "ldr  x4, ={}", tape_size - 1).unwrap();
+                    writeln!(out, "mov  x3, x4").unwrap();
+                    writeln!(out, ".Lwrap_l_done_{label}:").unwrap();
+                } else {
+                    writeln!(out, "cmp  x3, #0").unwrap();
+                    writeln!(out, "beq  .L_oob").unwrap();
+                    writeln!(out, "sub  x3, x3, #1").unwrap();
+                }
                 writeln!(out).unwrap();
             }
             Node::Increment => {
@@ -85,12 +109,19 @@ fn emit(nodes: &[Node], out: &mut dyn Write, counter: &mut usize) {
             }
             Node::Input => {
                 writeln!(out, "// {}", node.symbol()).unwrap();
+                let label = *counter;
+                *counter += 1;
                 writeln!(out, "ldr  x1, =tape").unwrap();
                 writeln!(out, "add  x1, x1, x3").unwrap();
                 writeln!(out, "mov  x8, #63").unwrap();
                 writeln!(out, "mov  x0, #0").unwrap();
                 writeln!(out, "mov  x2, #1").unwrap();
                 writeln!(out, "svc  #0").unwrap();
+                writeln!(out, "cmp  x0, #0").unwrap();
+                writeln!(out, "bne  .Lin_ok_{label}").unwrap();
+                writeln!(out, "mov  w5, #0").unwrap();
+                writeln!(out, "strb w5, [x1]").unwrap();
+                writeln!(out, ".Lin_ok_{label}:").unwrap();
                 writeln!(out).unwrap();
             }
             Node::Loop(body) => {
@@ -108,7 +139,7 @@ fn emit(nodes: &[Node], out: &mut dyn Write, counter: &mut usize) {
                 writeln!(out).unwrap();
 
                 // Loop body
-                emit(body, out, counter);
+                emit(body, out, counter, tape_size, wrapping);
 
                 // Loop footer — jump back if current cell is still nonzero
                 writeln!(out, "// ]").unwrap();
