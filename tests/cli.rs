@@ -148,12 +148,12 @@ fn interpret_debug_flag_does_not_crash() -> Result<(), Box<dyn std::error::Error
     Ok(())
 }
 
-// ── compile ───────────────────────────────────────────────────────────────────
+// ── compile --target arm ──────────────────────────────────────────────────────
 
 #[test]
-fn compile_emits_valid_assembly_structure() -> Result<(), Box<dyn std::error::Error>> {
+fn compile_arm_emits_valid_assembly_structure() -> Result<(), Box<dyn std::error::Error>> {
     let mut cmd = Command::cargo_bin("brainfuck-interpreter")?;
-    cmd.args(["compile", "--input", "tests/programs/hello_world.bf"]);
+    cmd.args(["compile", "--target", "arm", "--input", "tests/programs/hello_world.bf"]);
     cmd.assert()
         .success()
         .stdout(predicate::str::contains(".global _start"))
@@ -164,16 +164,14 @@ fn compile_emits_valid_assembly_structure() -> Result<(), Box<dyn std::error::Er
 }
 
 #[test]
-fn compile_output_to_file() -> Result<(), Box<dyn std::error::Error>> {
+fn compile_arm_output_to_file() -> Result<(), Box<dyn std::error::Error>> {
     let out = assert_fs::NamedTempFile::new("out.s")?;
 
     let mut cmd = Command::cargo_bin("brainfuck-interpreter")?;
     cmd.args([
-        "compile",
-        "--input",
-        "tests/programs/hello_world.bf",
-        "--output",
-        out.path().to_str().unwrap(),
+        "compile", "--target", "arm",
+        "--input",  "tests/programs/hello_world.bf",
+        "--output", out.path().to_str().unwrap(),
     ]);
     cmd.assert().stdout(predicate::str::is_empty()).success();
 
@@ -183,8 +181,71 @@ fn compile_output_to_file() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[test]
-fn compile_loop_labels_are_unique() -> Result<(), Box<dyn std::error::Error>> {
-    // Two sibling loops — must get distinct labels (.L0 and .L1)
+fn compile_arm_sibling_loop_labels_are_unique() -> Result<(), Box<dyn std::error::Error>> {
+    let file = assert_fs::NamedTempFile::new("two-loops.bf")?;
+    file.write_str("[-][+]")?;
+
+    let mut cmd = Command::cargo_bin("brainfuck-interpreter")?;
+    cmd.args(["compile", "--target", "arm", "--input", file.path().to_str().unwrap()]);
+    let output = cmd.output()?;
+    let stdout = String::from_utf8(output.stdout)?;
+
+    assert!(stdout.contains(".L0_start:"), "expected .L0_start label");
+    assert!(stdout.contains(".L1_start:"), "expected .L1_start label");
+    Ok(())
+}
+
+#[test]
+fn compile_arm_nested_loop_labels_are_unique() -> Result<(), Box<dyn std::error::Error>> {
+    let file = assert_fs::NamedTempFile::new("nested-loops.bf")?;
+    file.write_str("[[-]]")?;
+
+    let mut cmd = Command::cargo_bin("brainfuck-interpreter")?;
+    cmd.args(["compile", "--target", "arm", "--input", file.path().to_str().unwrap()]);
+    let output = cmd.output()?;
+    let stdout = String::from_utf8(output.stdout)?;
+
+    assert!(stdout.contains(".L0_start:"), "expected .L0_start label");
+    assert!(stdout.contains(".L1_start:"), "expected .L1_start label");
+    Ok(())
+}
+
+// ── compile --target llvm (default) ──────────────────────────────────────────
+
+#[test]
+fn compile_llvm_emits_valid_ir_structure() -> Result<(), Box<dyn std::error::Error>> {
+    // Default target is llvm — no --target flag needed
+    let mut cmd = Command::cargo_bin("brainfuck-interpreter")?;
+    cmd.args(["compile", "--input", "tests/programs/hello_world.bf"]);
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("declare i32 @putchar(i32)"))
+        .stdout(predicate::str::contains("declare i32 @getchar()"))
+        .stdout(predicate::str::contains("@tape = global [30000 x i8] zeroinitializer"))
+        .stdout(predicate::str::contains("define i32 @main()"))
+        .stdout(predicate::str::contains("ret i32 0"));
+    Ok(())
+}
+
+#[test]
+fn compile_llvm_output_to_file() -> Result<(), Box<dyn std::error::Error>> {
+    let out = assert_fs::NamedTempFile::new("out.ll")?;
+
+    let mut cmd = Command::cargo_bin("brainfuck-interpreter")?;
+    cmd.args([
+        "compile",
+        "--input",  "tests/programs/hello_world.bf",
+        "--output", out.path().to_str().unwrap(),
+    ]);
+    cmd.assert().stdout(predicate::str::is_empty()).success();
+
+    out.assert(predicate::str::contains("define i32 @main()"));
+    out.assert(predicate::str::contains("@tape = global [30000 x i8] zeroinitializer"));
+    Ok(())
+}
+
+#[test]
+fn compile_llvm_sibling_loop_labels_are_unique() -> Result<(), Box<dyn std::error::Error>> {
     let file = assert_fs::NamedTempFile::new("two-loops.bf")?;
     file.write_str("[-][+]")?;
 
@@ -193,20 +254,13 @@ fn compile_loop_labels_are_unique() -> Result<(), Box<dyn std::error::Error>> {
     let output = cmd.output()?;
     let stdout = String::from_utf8(output.stdout)?;
 
-    assert!(
-        stdout.contains(".L0_start:"),
-        "expected .L0_start label in output"
-    );
-    assert!(
-        stdout.contains(".L1_start:"),
-        "expected .L1_start label in output"
-    );
+    let check_count = stdout.matches("_check:").count();
+    assert!(check_count >= 2, "expected at least 2 loop check labels, found {check_count}");
     Ok(())
 }
 
 #[test]
-fn compile_nested_loop_labels_are_unique() -> Result<(), Box<dyn std::error::Error>> {
-    // Nested loops — inner loop must get a different label than the outer
+fn compile_llvm_nested_loop_labels_are_unique() -> Result<(), Box<dyn std::error::Error>> {
     let file = assert_fs::NamedTempFile::new("nested-loops.bf")?;
     file.write_str("[[-]]")?;
 
@@ -215,16 +269,49 @@ fn compile_nested_loop_labels_are_unique() -> Result<(), Box<dyn std::error::Err
     let output = cmd.output()?;
     let stdout = String::from_utf8(output.stdout)?;
 
-    assert!(
-        stdout.contains(".L0_start:"),
-        "expected .L0_start label in output"
-    );
-    assert!(
-        stdout.contains(".L1_start:"),
-        "expected .L1_start label in output"
-    );
+    let check_count = stdout.matches("_check:").count();
+    assert!(check_count >= 2, "expected at least 2 loop check labels, found {check_count}");
+    assert!(stdout.contains("entry:"), "expected entry: label");
     Ok(())
 }
+
+#[test]
+fn compile_llvm_dp_initialised_to_zero() -> Result<(), Box<dyn std::error::Error>> {
+    let mut cmd = Command::cargo_bin("brainfuck-interpreter")?;
+    cmd.args(["compile", "--input", "tests/programs/print_no_loop.bf"]);
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("store i64 0, ptr %dp"));
+    Ok(())
+}
+
+#[test]
+fn compile_llvm_output_uses_putchar() -> Result<(), Box<dyn std::error::Error>> {
+    let file = assert_fs::NamedTempFile::new("dot.bf")?;
+    file.write_str(".")?;
+
+    let mut cmd = Command::cargo_bin("brainfuck-interpreter")?;
+    cmd.args(["compile", "--input", file.path().to_str().unwrap()]);
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("call i32 @putchar"));
+    Ok(())
+}
+
+#[test]
+fn compile_llvm_input_uses_getchar() -> Result<(), Box<dyn std::error::Error>> {
+    let file = assert_fs::NamedTempFile::new("comma.bf")?;
+    file.write_str(",")?;
+
+    let mut cmd = Command::cargo_bin("brainfuck-interpreter")?;
+    cmd.args(["compile", "--input", file.path().to_str().unwrap()]);
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("call i32 @getchar"));
+    Ok(())
+}
+
+// ── compile — shared error handling ──────────────────────────────────────────
 
 #[test]
 fn compile_unmatched_open_bracket_fails() -> Result<(), Box<dyn std::error::Error>> {

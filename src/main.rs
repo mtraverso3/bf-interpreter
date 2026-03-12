@@ -6,10 +6,20 @@ use clap::{Parser, Subcommand};
 use colored::Colorize;
 
 mod compile_arm;
+mod compile_llvm;
 mod interpreter;
 mod parser;
 
-/// A Brainfuck interpreter and AArch64 compiler.
+/// Compilation output target.
+#[derive(clap::ValueEnum, Clone, Debug)]
+enum Target {
+    /// LLVM IR (.ll) — compile with: clang -O2 -o program out.ll
+    Llvm,
+    /// AArch64 Linux assembly (.s) — assemble with: as out.s -o out.o && ld out.o -o program
+    Arm,
+}
+
+/// A Brainfuck interpreter and AArch64 / LLVM IR compiler.
 #[derive(Parser)]
 #[command(about, version, author)]
 struct Cli {
@@ -42,15 +52,19 @@ enum Command {
         debug: bool,
     },
 
-    /// Compile a Brainfuck program to AArch64 assembly.
+    /// Compile a Brainfuck program to the chosen target.
     Compile {
         /// Path to the Brainfuck source file.
         #[arg(short, long)]
         input: String,
 
-        /// Optional file to write the assembly output to. Defaults to stdout.
+        /// Optional file to write the compiled output to. Defaults to stdout.
         #[arg(short, long)]
         output: Option<String>,
+
+        /// Output target format.
+        #[arg(short, long, value_enum, default_value = "llvm")]
+        target: Target,
     },
 }
 
@@ -69,10 +83,17 @@ fn main() {
             let nodes = parse(&source);
             interpreter::interpret(&nodes, output, wrapping, size, debug);
         }
-        Command::Compile { input, output } => {
+        Command::Compile {
+            input,
+            output,
+            target,
+        } => {
             let source = read_program(&input);
             let nodes = parse(&source);
-            compile_arm::compile_arm(&nodes, output);
+            match target {
+                Target::Llvm => compile_llvm::compile_llvm(&nodes, output),
+                Target::Arm => compile_arm::compile_arm(&nodes, output),
+            }
         }
     }
 }
