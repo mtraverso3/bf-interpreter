@@ -32,7 +32,7 @@ pub fn interpret(program: String, output_path: Option<String>, wrapping: bool, s
 
         //print current state (ignore comments)
         if debug && (current_character == '>' || current_character == '<' || current_character == '+' || current_character == '-' || current_character == '.' || current_character == ',' || current_character == '[' || current_character == ']') {
-            println!("Currently at: {} - {} -- {:?}", i, current_character, memory);
+            println!("Currently at: {}, {}, {:?}", i, current_character, memory);
         }
 
 
