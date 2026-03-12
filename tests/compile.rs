@@ -68,7 +68,7 @@ fn arm_wrapping_omits_oob_handler() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn arm_sibling_loop_labels_are_unique() -> Result<(), Box<dyn std::error::Error>> {
     let file = assert_fs::NamedTempFile::new("two-loops.bf")?;
-    file.write_str("[-][+]")?;
+    file.write_str("+[.-]+[.-]")?;
 
     let mut cmd = Command::cargo_bin("bf-tools")?;
     cmd.args(["compile", "--target", "arm", "--input", file.path().to_str().unwrap()]);
@@ -82,7 +82,7 @@ fn arm_sibling_loop_labels_are_unique() -> Result<(), Box<dyn std::error::Error>
 #[test]
 fn arm_nested_loop_labels_are_unique() -> Result<(), Box<dyn std::error::Error>> {
     let file = assert_fs::NamedTempFile::new("nested-loops.bf")?;
-    file.write_str("[[-]]")?;
+    file.write_str("+[>[.-]<-]")?;
 
     let mut cmd = Command::cargo_bin("bf-tools")?;
     cmd.args(["compile", "--target", "arm", "--input", file.path().to_str().unwrap()]);
@@ -90,6 +90,33 @@ fn arm_nested_loop_labels_are_unique() -> Result<(), Box<dyn std::error::Error>>
 
     assert!(stdout.contains(".L0_start:"), "expected .L0_start label");
     assert!(stdout.contains(".L1_start:"), "expected .L1_start label");
+    Ok(())
+}
+
+#[test]
+fn arm_compiles_counted_moves_from_ir() -> Result<(), Box<dyn std::error::Error>> {
+    let file = assert_fs::NamedTempFile::new("moves.bf")?;
+    file.write_str(">>>")?;
+
+    let mut cmd = Command::cargo_bin("bf-tools")?;
+    cmd.args(["compile", "--target", "arm", "--input", file.path().to_str().unwrap()]);
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("// move 3"));
+    Ok(())
+}
+
+#[test]
+fn arm_compiles_clear_loops_as_clear_ir() -> Result<(), Box<dyn std::error::Error>> {
+    let file = assert_fs::NamedTempFile::new("clear.bf")?;
+    file.write_str("[-]")?;
+
+    let mut cmd = Command::cargo_bin("bf-tools")?;
+    cmd.args(["compile", "--target", "arm", "--input", file.path().to_str().unwrap()]);
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("// clear"))
+        .stdout(predicate::str::contains("_start:").and(predicate::str::contains(".L0_start:").not()));
     Ok(())
 }
 
@@ -160,7 +187,7 @@ fn llvm_wrapping_omits_oob_handler() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn llvm_sibling_loop_labels_are_unique() -> Result<(), Box<dyn std::error::Error>> {
     let file = assert_fs::NamedTempFile::new("two-loops.bf")?;
-    file.write_str("[-][+]")?;
+    file.write_str("+[.-]+[.-]")?;
 
     let mut cmd = Command::cargo_bin("bf-tools")?;
     cmd.args(["compile", "--input", file.path().to_str().unwrap()]);
@@ -174,7 +201,7 @@ fn llvm_sibling_loop_labels_are_unique() -> Result<(), Box<dyn std::error::Error
 #[test]
 fn llvm_nested_loop_labels_are_unique() -> Result<(), Box<dyn std::error::Error>> {
     let file = assert_fs::NamedTempFile::new("nested-loops.bf")?;
-    file.write_str("[[-]]")?;
+    file.write_str("+[>[.-]<-]")?;
 
     let mut cmd = Command::cargo_bin("bf-tools")?;
     cmd.args(["compile", "--input", file.path().to_str().unwrap()]);
@@ -232,6 +259,33 @@ fn llvm_input_maps_eof_to_zero() -> Result<(), Box<dyn std::error::Error>> {
     cmd.assert()
         .success()
         .stdout(predicate::str::contains("select i1").and(predicate::str::contains("i8 0")));
+    Ok(())
+}
+
+#[test]
+fn llvm_compiles_counted_moves_from_ir() -> Result<(), Box<dyn std::error::Error>> {
+    let file = assert_fs::NamedTempFile::new("moves.bf")?;
+    file.write_str(">>>")?;
+
+    let mut cmd = Command::cargo_bin("bf-tools")?;
+    cmd.args(["compile", "--input", file.path().to_str().unwrap()]);
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("; move 3"));
+    Ok(())
+}
+
+#[test]
+fn llvm_compiles_clear_loops_as_clear_ir() -> Result<(), Box<dyn std::error::Error>> {
+    let file = assert_fs::NamedTempFile::new("clear.bf")?;
+    file.write_str("[-]")?;
+
+    let mut cmd = Command::cargo_bin("bf-tools")?;
+    cmd.args(["compile", "--input", file.path().to_str().unwrap()]);
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("; clear"))
+        .stdout(predicate::str::contains("entry:").and(predicate::str::contains("loop_0_check:").not()));
     Ok(())
 }
 

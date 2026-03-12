@@ -37,6 +37,28 @@ fn reduces_redundant_plus_minus_runs() -> Result<(), Box<dyn std::error::Error>>
 }
 
 #[test]
+fn folds_same_direction_move_runs() -> Result<(), Box<dyn std::error::Error>> {
+    let file = assert_fs::NamedTempFile::new("fold-move.bf")?;
+    file.write_str(">>>")?;
+
+    let mut cmd = Command::cargo_bin("bf-tools")?;
+    cmd.args(["minify", "--input", file.path().to_str().unwrap()]);
+    cmd.assert().success().stdout(predicate::eq(">>>"));
+    Ok(())
+}
+
+#[test]
+fn fold_move_does_not_cancel_opposite_directions() -> Result<(), Box<dyn std::error::Error>> {
+    let file = assert_fs::NamedTempFile::new("fold-move-opposite.bf")?;
+    file.write_str("><")?;
+
+    let mut cmd = Command::cargo_bin("bf-tools")?;
+    cmd.args(["minify", "--input", file.path().to_str().unwrap()]);
+    cmd.assert().success().stdout(predicate::eq("><"));
+    Ok(())
+}
+
+#[test]
 fn chooses_shorter_direction_for_large_delta() -> Result<(), Box<dyn std::error::Error>> {
     let file = assert_fs::NamedTempFile::new("large-delta.bf")?;
     file.write_str(&"+".repeat(200))?;
@@ -89,6 +111,21 @@ fn selected_passes_are_applied() -> Result<(), Box<dyn std::error::Error>> {
         "--pass", "fold-add-sub",
     ]);
     cmd.assert().success().stdout(predicate::eq("++"));
+    Ok(())
+}
+
+#[test]
+fn selected_fold_move_pass_is_available() -> Result<(), Box<dyn std::error::Error>> {
+    let file = assert_fs::NamedTempFile::new("selected-fold-move.bf")?;
+    file.write_str(">>>")?;
+
+    let mut cmd = Command::cargo_bin("bf-tools")?;
+    cmd.args([
+        "minify",
+        "--input", file.path().to_str().unwrap(),
+        "--pass", "fold-move",
+    ]);
+    cmd.assert().success().stdout(predicate::eq(">>>"));
     Ok(())
 }
 

@@ -7,6 +7,7 @@ use colored::Colorize;
 
 mod codegen;
 mod common;
+mod ir;
 mod minify;
 mod runtime;
 mod syntax;
@@ -24,6 +25,8 @@ enum Target {
 enum OptimizePass {
     /// Fold contiguous +/- runs modulo 256 and keep the shorter direction.
     FoldAddSub,
+    /// Fold contiguous same-direction pointer movement runs into counted moves.
+    FoldMove,
     /// Canonicalize `[+]` and `[-]` style zeroing loops to `[-]`.
     CanonicalizeClearLoops,
     /// Remove loops that are provably dead because the current cell is known to be zero.
@@ -134,9 +137,10 @@ fn main() {
             validate_size(size);
             let source = read_program(&input);
             let nodes = parse(&source);
+            let program = ir::optimize_default(&ir::lower(&nodes));
             match target {
-                Target::Llvm => codegen::llvm::compile_llvm(&nodes, output, size, wrapping),
-                Target::Arm => codegen::arm::compile_arm(&nodes, output, size, wrapping),
+                Target::Llvm => codegen::llvm::compile_llvm(&program, output, size, wrapping),
+                Target::Arm => codegen::arm::compile_arm(&program, output, size, wrapping),
             }
         }
         Command::Minify {
@@ -157,6 +161,7 @@ fn main() {
                     .into_iter()
                     .map(|p| match p {
                         OptimizePass::FoldAddSub => minify::PassId::FoldAddSub,
+                        OptimizePass::FoldMove => minify::PassId::FoldMove,
                         OptimizePass::CanonicalizeClearLoops => {
                             minify::PassId::CanonicalizeClearLoops
                         }

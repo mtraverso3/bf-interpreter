@@ -1,9 +1,14 @@
 use std::io::Write;
 
 use crate::common::create_output_writer;
-use crate::syntax::Node;
+use crate::ir::Instr;
 
-pub fn compile_arm(nodes: &[Node], output_path: Option<String>, tape_size: usize, wrapping: bool) {
+pub fn compile_arm(
+    program: &[Instr],
+    output_path: Option<String>,
+    tape_size: usize,
+    wrapping: bool,
+) {
     let mut out_writer = create_output_writer(output_path);
 
     // BSS section — memory tape
@@ -17,9 +22,15 @@ pub fn compile_arm(nodes: &[Node], output_path: Option<String>, tape_size: usize
     writeln!(out_writer, "mov  x3, #0").unwrap();
     writeln!(out_writer).unwrap();
 
-    // Emit instructions; label counter is threaded through to keep labels unique
+    // Emit instructions; label counter is threaded through to keep labels unique.
     let mut label_counter: usize = 0;
-    emit(nodes, &mut *out_writer, &mut label_counter, tape_size, wrapping);
+    emit(
+        program,
+        &mut *out_writer,
+        &mut label_counter,
+        tape_size,
+        wrapping,
+    );
 
     if !wrapping {
         writeln!(out_writer, ".L_oob:").unwrap();
@@ -35,70 +46,19 @@ pub fn compile_arm(nodes: &[Node], output_path: Option<String>, tape_size: usize
     writeln!(out_writer, "svc #0").unwrap();
 }
 
-fn emit(nodes: &[Node], out: &mut dyn Write, counter: &mut usize, tape_size: usize, wrapping: bool) {
-    for node in nodes {
-        match node {
-            Node::MoveRight => {
-                writeln!(out, "// {}", node.symbol()).unwrap();
-                if wrapping {
-                    let label = *counter;
-                    *counter += 1;
-                    writeln!(out, "ldr  x4, ={}", tape_size - 1).unwrap();
-                    writeln!(out, "cmp  x3, x4").unwrap();
-                    writeln!(out, "beq  .Lwrap_r_{label}").unwrap();
-                    writeln!(out, "add  x3, x3, #1").unwrap();
-                    writeln!(out, "b    .Lwrap_r_done_{label}").unwrap();
-                    writeln!(out, ".Lwrap_r_{label}:").unwrap();
-                    writeln!(out, "mov  x3, #0").unwrap();
-                    writeln!(out, ".Lwrap_r_done_{label}:").unwrap();
-                } else {
-                    writeln!(out, "ldr  x4, ={}", tape_size - 1).unwrap();
-                    writeln!(out, "cmp  x3, x4").unwrap();
-                    writeln!(out, "beq  .L_oob").unwrap();
-                    writeln!(out, "add  x3, x3, #1").unwrap();
-                }
-                writeln!(out).unwrap();
-            }
-            Node::MoveLeft => {
-                writeln!(out, "// {}", node.symbol()).unwrap();
-                if wrapping {
-                    let label = *counter;
-                    *counter += 1;
-                    writeln!(out, "cmp  x3, #0").unwrap();
-                    writeln!(out, "beq  .Lwrap_l_{label}").unwrap();
-                    writeln!(out, "sub  x3, x3, #1").unwrap();
-                    writeln!(out, "b    .Lwrap_l_done_{label}").unwrap();
-                    writeln!(out, ".Lwrap_l_{label}:").unwrap();
-                    writeln!(out, "ldr  x4, ={}", tape_size - 1).unwrap();
-                    writeln!(out, "mov  x3, x4").unwrap();
-                    writeln!(out, ".Lwrap_l_done_{label}:").unwrap();
-                } else {
-                    writeln!(out, "cmp  x3, #0").unwrap();
-                    writeln!(out, "beq  .L_oob").unwrap();
-                    writeln!(out, "sub  x3, x3, #1").unwrap();
-                }
-                writeln!(out).unwrap();
-            }
-            Node::Increment => {
-                writeln!(out, "// {}", node.symbol()).unwrap();
-                writeln!(out, "ldr  x0, =tape").unwrap();
-                writeln!(out, "add  x0, x0, x3").unwrap();
-                writeln!(out, "ldrb w1, [x0]").unwrap();
-                writeln!(out, "add  w1, w1, #1").unwrap();
-                writeln!(out, "strb w1, [x0]").unwrap();
-                writeln!(out).unwrap();
-            }
-            Node::Decrement => {
-                writeln!(out, "// {}", node.symbol()).unwrap();
-                writeln!(out, "ldr  x0, =tape").unwrap();
-                writeln!(out, "add  x0, x0, x3").unwrap();
-                writeln!(out, "ldrb w1, [x0]").unwrap();
-                writeln!(out, "sub  w1, w1, #1").unwrap();
-                writeln!(out, "strb w1, [x0]").unwrap();
-                writeln!(out).unwrap();
-            }
-            Node::Output => {
-                writeln!(out, "// {}", node.symbol()).unwrap();
+fn emit(
+    program: &[Instr],
+    out: &mut dyn Write,
+    counter: &mut usize,
+    tape_size: usize,
+    wrapping: bool,
+) {
+    for instr in program {
+        match instr {
+            Instr::Move(delta) => emit_move(*delta, out, counter, tape_size, wrapping),
+            Instr::Add(delta) => emit_add(*delta, out),
+            Instr::Output => {
+                writeln!(out, "// .").unwrap();
                 writeln!(out, "ldr  x1, =tape").unwrap();
                 writeln!(out, "add  x1, x1, x3").unwrap();
                 writeln!(out, "mov  x8, #64").unwrap();
@@ -107,8 +67,8 @@ fn emit(nodes: &[Node], out: &mut dyn Write, counter: &mut usize, tape_size: usi
                 writeln!(out, "svc  #0").unwrap();
                 writeln!(out).unwrap();
             }
-            Node::Input => {
-                writeln!(out, "// {}", node.symbol()).unwrap();
+            Instr::Input => {
+                writeln!(out, "// ,").unwrap();
                 let label = *counter;
                 *counter += 1;
                 writeln!(out, "ldr  x1, =tape").unwrap();
@@ -124,12 +84,12 @@ fn emit(nodes: &[Node], out: &mut dyn Write, counter: &mut usize, tape_size: usi
                 writeln!(out, ".Lin_ok_{label}:").unwrap();
                 writeln!(out).unwrap();
             }
-            Node::Loop(body) => {
+            Instr::Clear => emit_clear(out),
+            Instr::Loop(body) => {
                 let label = *counter;
                 *counter += 1;
 
-                // Loop header — skip body if current cell is zero
-                writeln!(out, "// [").unwrap();
+                writeln!(out, "// loop start").unwrap();
                 writeln!(out, ".L{label}_start:").unwrap();
                 writeln!(out, "ldr  x0, =tape").unwrap();
                 writeln!(out, "add  x0, x0, x3").unwrap();
@@ -138,11 +98,9 @@ fn emit(nodes: &[Node], out: &mut dyn Write, counter: &mut usize, tape_size: usi
                 writeln!(out, "beq  .L{label}_end").unwrap();
                 writeln!(out).unwrap();
 
-                // Loop body
                 emit(body, out, counter, tape_size, wrapping);
 
-                // Loop footer — jump back if current cell is still nonzero
-                writeln!(out, "// ]").unwrap();
+                writeln!(out, "// loop end").unwrap();
                 writeln!(out, "ldr  x0, =tape").unwrap();
                 writeln!(out, "add  x0, x0, x3").unwrap();
                 writeln!(out, "ldrb w0, [x0]").unwrap();
@@ -155,3 +113,100 @@ fn emit(nodes: &[Node], out: &mut dyn Write, counter: &mut usize, tape_size: usi
     }
 }
 
+fn emit_move(
+    delta: i64,
+    out: &mut dyn Write,
+    counter: &mut usize,
+    tape_size: usize,
+    wrapping: bool,
+) {
+    if delta == 0 {
+        return;
+    }
+
+    writeln!(out, "// move {delta}").unwrap();
+
+    if wrapping {
+        let shift = delta.rem_euclid(tape_size as i64);
+        if shift == 0 {
+            return;
+        }
+
+        let label = *counter;
+        *counter += 1;
+        writeln!(out, "ldr  x4, ={shift}").unwrap();
+        writeln!(out, "ldr  x5, ={tape_size}").unwrap();
+        writeln!(out, "add  x3, x3, x4").unwrap();
+        writeln!(out, "cmp  x3, x5").unwrap();
+        writeln!(out, "blo  .Lmove_done_{label}").unwrap();
+        writeln!(out, "sub  x3, x3, x5").unwrap();
+        writeln!(out, ".Lmove_done_{label}:").unwrap();
+        writeln!(out).unwrap();
+        return;
+    }
+
+    if delta > 0 {
+        let amount = delta as usize;
+        if amount >= tape_size {
+            let label = *counter;
+            *counter += 1;
+            writeln!(out, "b    .L_oob").unwrap();
+            writeln!(out, ".Lmove_after_oob_{label}:").unwrap();
+            writeln!(out).unwrap();
+            return;
+        }
+
+        writeln!(out, "ldr  x4, ={}", tape_size - amount).unwrap();
+        writeln!(out, "cmp  x3, x4").unwrap();
+        writeln!(out, "bhs  .L_oob").unwrap();
+        writeln!(out, "ldr  x4, ={amount}").unwrap();
+        writeln!(out, "add  x3, x3, x4").unwrap();
+        writeln!(out).unwrap();
+    } else {
+        let amount = delta.unsigned_abs() as usize;
+        if amount >= tape_size {
+            let label = *counter;
+            *counter += 1;
+            writeln!(out, "b    .L_oob").unwrap();
+            writeln!(out, ".Lmove_after_oob_{label}:").unwrap();
+            writeln!(out).unwrap();
+            return;
+        }
+
+        writeln!(out, "ldr  x4, ={amount}").unwrap();
+        writeln!(out, "cmp  x3, x4").unwrap();
+        writeln!(out, "blo  .L_oob").unwrap();
+        writeln!(out, "sub  x3, x3, x4").unwrap();
+        writeln!(out).unwrap();
+    }
+}
+
+fn emit_add(delta: i16, out: &mut dyn Write) {
+    let normalized = i32::from(delta).rem_euclid(256);
+    if normalized == 0 {
+        return;
+    }
+
+    let (op, amount) = if normalized <= 128 {
+        ("add", normalized)
+    } else {
+        ("sub", 256 - normalized)
+    };
+
+    writeln!(out, "// {op} {amount}").unwrap();
+    writeln!(out, "ldr  x0, =tape").unwrap();
+    writeln!(out, "add  x0, x0, x3").unwrap();
+    writeln!(out, "ldrb w1, [x0]").unwrap();
+    writeln!(out, "{op}  w1, w1, #{amount}").unwrap();
+    writeln!(out, "strb w1, [x0]").unwrap();
+    writeln!(out).unwrap();
+}
+
+fn emit_clear(out: &mut dyn Write) {
+    writeln!(out, "// clear").unwrap();
+    writeln!(out, "ldr  x0, =tape").unwrap();
+    writeln!(out, "add  x0, x0, x3").unwrap();
+    writeln!(out, "mov  w1, #0").unwrap();
+    writeln!(out, "strb w1, [x0]").unwrap();
+    writeln!(out).unwrap();
+}

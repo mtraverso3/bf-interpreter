@@ -1,11 +1,10 @@
 use std::io::Write;
 
 use crate::common::create_output_writer;
+use crate::ir;
 use crate::syntax::Node;
 
-mod optimizer;
-
-pub use optimizer::PassId;
+pub use crate::ir::PassId;
 
 pub enum OptimizeConfig {
     Default,
@@ -15,8 +14,9 @@ pub enum OptimizeConfig {
 
 pub fn compress(nodes: &[Node], output_path: Option<String>, config: OptimizeConfig) {
     let mut out_writer = create_output_writer(output_path);
-    let optimized = optimize_ast(nodes, config);
-    let compressed = emit_nodes(&optimized);
+    let program = ir::lower(nodes);
+    let optimized = optimize_program(&program, config);
+    let compressed = ir::emit_brainfuck(&optimized);
 
     out_writer
         .write_all(compressed.as_bytes())
@@ -26,34 +26,10 @@ pub fn compress(nodes: &[Node], output_path: Option<String>, config: OptimizeCon
         });
 }
 
-pub fn optimize_ast(nodes: &[Node], config: OptimizeConfig) -> Vec<Node> {
+pub fn optimize_program(program: &[ir::Instr], config: OptimizeConfig) -> Vec<ir::Instr> {
     match config {
-        OptimizeConfig::Default => optimizer::optimize_default(nodes),
-        OptimizeConfig::None => nodes.to_vec(),
-        OptimizeConfig::Selected(passes) => optimizer::optimize_with_passes(nodes, &passes),
+        OptimizeConfig::Default => ir::optimize_default(program),
+        OptimizeConfig::None => program.to_vec(),
+        OptimizeConfig::Selected(passes) => ir::optimize_with_passes(program, &passes),
     }
 }
-
-fn emit_nodes(nodes: &[Node]) -> String {
-    let mut out = String::new();
-
-    for node in nodes {
-        match node {
-            Node::MoveRight => out.push('>'),
-            Node::MoveLeft => out.push('<'),
-            Node::Increment => out.push('+'),
-            Node::Decrement => out.push('-'),
-            Node::Output => out.push('.'),
-            Node::Input => out.push(','),
-            Node::Loop(body) => {
-                out.push('[');
-                out.push_str(&emit_nodes(body));
-                out.push(']');
-            }
-        }
-    }
-
-    out
-}
-
-
