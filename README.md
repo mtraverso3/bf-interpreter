@@ -73,6 +73,8 @@ Options:
   --pass <PASS>            Optimization passes to run. Repeat this flag to run multiple passes
       Possible values:
       - fold-add-sub: Fold contiguous +/- runs modulo 256 and keep the shorter direction
+      - canonicalize-clear-loops: Canonicalize `[+]` and `[-]` style zeroing loops to `[-]`
+      - remove-known-zero-loops: Remove loops that are provably dead because the current cell is known to be zero
 ```
 
 ### License

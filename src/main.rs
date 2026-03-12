@@ -24,6 +24,10 @@ enum Target {
 enum OptimizePass {
     /// Fold contiguous +/- runs modulo 256 and keep the shorter direction.
     FoldAddSub,
+    /// Canonicalize `[+]` and `[-]` style zeroing loops to `[-]`.
+    CanonicalizeClearLoops,
+    /// Remove loops that are provably dead because the current cell is known to be zero.
+    RemoveKnownZeroLoops,
 }
 
 /// A Brainfuck interpreter and AArch64 / LLVM IR compiler.
@@ -153,6 +157,12 @@ fn main() {
                     .into_iter()
                     .map(|p| match p {
                         OptimizePass::FoldAddSub => minify::PassId::FoldAddSub,
+                        OptimizePass::CanonicalizeClearLoops => {
+                            minify::PassId::CanonicalizeClearLoops
+                        }
+                        OptimizePass::RemoveKnownZeroLoops => {
+                            minify::PassId::RemoveKnownZeroLoops
+                        }
                     })
                     .collect();
                 minify::OptimizeConfig::Selected(selected)

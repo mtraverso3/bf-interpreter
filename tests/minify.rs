@@ -93,6 +93,59 @@ fn selected_passes_are_applied() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 #[test]
+fn default_pipeline_canonicalizes_clear_loops() -> Result<(), Box<dyn std::error::Error>> {
+    let file = assert_fs::NamedTempFile::new("clear-loop.bf")?;
+    file.write_str("+[++-]")?;
+
+    let mut cmd = Command::cargo_bin("bf-tools")?;
+    cmd.args(["minify", "--input", file.path().to_str().unwrap()]);
+    cmd.assert().success().stdout(predicate::eq("+[-]"));
+    Ok(())
+}
+
+#[test]
+fn default_pipeline_removes_loops_on_known_zero_cells() -> Result<(), Box<dyn std::error::Error>> {
+    let file = assert_fs::NamedTempFile::new("dead-loops.bf")?;
+    file.write_str("[.] + [-] [.]")?;
+
+    let mut cmd = Command::cargo_bin("bf-tools")?;
+    cmd.args(["minify", "--input", file.path().to_str().unwrap()]);
+    cmd.assert().success().stdout(predicate::eq("+[-]"));
+    Ok(())
+}
+
+#[test]
+fn selected_clear_loop_passes_can_compose() -> Result<(), Box<dyn std::error::Error>> {
+    let file = assert_fs::NamedTempFile::new("selected-clear-loop.bf")?;
+    file.write_str("[++-]")?;
+
+    let mut cmd = Command::cargo_bin("bf-tools")?;
+    cmd.args([
+        "minify",
+        "--input", file.path().to_str().unwrap(),
+        "--pass", "fold-add-sub",
+        "--pass", "canonicalize-clear-loops",
+    ]);
+    cmd.assert().success().stdout(predicate::eq("[-]"));
+    Ok(())
+}
+
+#[test]
+fn selected_known_zero_loop_pass_is_available() -> Result<(), Box<dyn std::error::Error>> {
+    let file = assert_fs::NamedTempFile::new("selected-dead-loop.bf")?;
+    file.write_str("[.]")?;
+
+    let mut cmd = Command::cargo_bin("bf-tools")?;
+    cmd.args([
+        "minify",
+        "--input", file.path().to_str().unwrap(),
+        "--pass", "remove-known-zero-loops",
+    ]);
+    cmd.assert().success().stdout(predicate::eq(""));
+    Ok(())
+}
+
+#[test]
 fn unmatched_open_bracket_fails() -> Result<(), Box<dyn std::error::Error>> {
     let file = assert_fs::NamedTempFile::new("bad-open-minify.bf")?;
     file.write_str("+[")?;
