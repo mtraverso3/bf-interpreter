@@ -1,10 +1,12 @@
 use crate::ir::Instr;
+use std::collections::BTreeMap;
 
 /// IDs for optimization passes that can be selected from the CLI.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum PassId {
     FoldAddSub,
     FoldMove,
+    CanonicalizeTransferLoops,
     CanonicalizeClearLoops,
     RemoveKnownZeroLoops,
 }
@@ -14,6 +16,7 @@ impl PassId {
         vec![
             Self::FoldAddSub,
             Self::FoldMove,
+            Self::CanonicalizeTransferLoops,
             Self::CanonicalizeClearLoops,
             Self::RemoveKnownZeroLoops,
         ]
@@ -36,6 +39,9 @@ impl Pipeline {
             match id {
                 PassId::FoldAddSub => passes.push(Box::new(FoldAddSubPass)),
                 PassId::FoldMove => passes.push(Box::new(FoldMovePass)),
+                PassId::CanonicalizeTransferLoops => {
+                    passes.push(Box::new(CanonicalizeTransferLoopsPass))
+                }
                 PassId::CanonicalizeClearLoops => passes.push(Box::new(CanonicalizeClearLoopsPass)),
                 PassId::RemoveKnownZeroLoops => passes.push(Box::new(RemoveKnownZeroLoopsPass)),
             }
@@ -65,6 +71,7 @@ pub fn optimize_with_passes(program: &[Instr], passes: &[PassId]) -> Vec<Instr> 
 
 struct FoldAddSubPass;
 struct FoldMovePass;
+struct CanonicalizeTransferLoopsPass;
 struct CanonicalizeClearLoopsPass;
 struct RemoveKnownZeroLoopsPass;
 
@@ -77,6 +84,12 @@ impl OptimizationPass for FoldAddSubPass {
 impl OptimizationPass for FoldMovePass {
     fn run(&self, program: &[Instr]) -> Vec<Instr> {
         fold_moves(program)
+    }
+}
+
+impl OptimizationPass for CanonicalizeTransferLoopsPass {
+    fn run(&self, program: &[Instr]) -> Vec<Instr> {
+        canonicalize_transfer_loops(program)
     }
 }
 
@@ -192,6 +205,70 @@ fn canonicalize_clear_loops(program: &[Instr]) -> Vec<Instr> {
         .collect()
 }
 
+fn canonicalize_transfer_loops(program: &[Instr]) -> Vec<Instr> {
+    program
+        .iter()
+        .map(|instr| match instr {
+            Instr::Loop(body) => {
+                let body = canonicalize_transfer_loops(body);
+                if let Some(targets) = match_transfer_loop(&body) {
+                    Instr::Transfer(targets)
+                } else {
+                    Instr::Loop(body)
+                }
+            }
+            _ => instr.clone(),
+        })
+        .collect()
+}
+
+fn match_transfer_loop(body: &[Instr]) -> Option<Vec<(i64, i16)>> {
+    let mut ptr: i64 = 0;
+    let mut source_delta: i32 = 0;
+    let mut target_deltas: BTreeMap<i64, i32> = BTreeMap::new();
+
+    for instr in body {
+        match instr {
+            Instr::Move(delta) => ptr = ptr.checked_add(*delta)?,
+            Instr::Add(delta) => {
+                if ptr == 0 {
+                    source_delta += i32::from(*delta);
+                } else {
+                    *target_deltas.entry(ptr).or_default() += i32::from(*delta);
+                }
+            }
+            _ => return None,
+        }
+    }
+
+    if ptr != 0 || source_delta.rem_euclid(256) != 255 {
+        return None;
+    }
+
+    let mut targets = Vec::new();
+    for (offset, delta) in target_deltas {
+        let normalized = delta.rem_euclid(256);
+        if normalized == 0 {
+            continue;
+        }
+
+        let plus_count = normalized;
+        let minus_count = 256 - normalized;
+        let factor = if plus_count <= minus_count {
+            plus_count as i16
+        } else {
+            -(minus_count as i16)
+        };
+        targets.push((offset, factor));
+    }
+
+    if targets.is_empty() {
+        return None;
+    }
+
+    Some(targets)
+}
+
 fn remove_known_zero_loops(program: &[Instr], mut current_cell_known_zero: bool) -> Vec<Instr> {
     let mut out = Vec::new();
 
@@ -201,6 +278,11 @@ fn remove_known_zero_loops(program: &[Instr], mut current_cell_known_zero: bool)
             Instr::Clear => {
                 current_cell_known_zero = true;
                 out.push(Instr::Clear);
+            }
+            Instr::Transfer(_) if current_cell_known_zero => continue,
+            Instr::Transfer(targets) => {
+                current_cell_known_zero = true;
+                out.push(Instr::Transfer(targets.clone()));
             }
             Instr::Loop(body) => {
                 let optimized_body = remove_known_zero_loops(body, false);
@@ -281,6 +363,49 @@ mod tests {
 
         let optimized = optimize_with_passes(&program, &[PassId::CanonicalizeClearLoops]);
         assert_eq!(optimized, vec![Instr::Clear]);
+    }
+
+    #[test]
+    fn canonicalize_transfer_loops_rewrites_simple_transfer() {
+        let program = vec![Instr::Loop(vec![
+            Instr::Add(-1),
+            Instr::Move(1),
+            Instr::Add(1),
+            Instr::Move(-1),
+        ])];
+
+        let optimized = optimize_with_passes(&program, &[PassId::CanonicalizeTransferLoops]);
+        assert_eq!(optimized, vec![Instr::Transfer(vec![(1, 1)])]);
+    }
+
+    #[test]
+    fn canonicalize_transfer_loops_rejects_non_terminating_source_update() {
+        let program = vec![Instr::Loop(vec![
+            Instr::Add(1),
+            Instr::Move(1),
+            Instr::Add(1),
+            Instr::Move(-1),
+        ])];
+
+        let optimized = optimize_with_passes(&program, &[PassId::CanonicalizeTransferLoops]);
+        assert_eq!(optimized, program);
+    }
+
+    #[test]
+    fn selected_passes_can_compose_into_transfer_loops() {
+        let program = vec![Instr::Loop(vec![
+            Instr::Add(-1),
+            Instr::Move(1),
+            Instr::Add(1),
+            Instr::Add(1),
+            Instr::Move(-1),
+        ])];
+
+        let optimized = optimize_with_passes(
+            &program,
+            &[PassId::FoldAddSub, PassId::FoldMove, PassId::CanonicalizeTransferLoops],
+        );
+        assert_eq!(optimized, vec![Instr::Transfer(vec![(1, 2)])]);
     }
 
     #[test]

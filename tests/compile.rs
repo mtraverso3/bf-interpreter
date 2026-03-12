@@ -120,6 +120,20 @@ fn arm_compiles_clear_loops_as_clear_ir() -> Result<(), Box<dyn std::error::Erro
     Ok(())
 }
 
+#[test]
+fn arm_compiles_transfer_loops_as_transfer_ir() -> Result<(), Box<dyn std::error::Error>> {
+    let file = assert_fs::NamedTempFile::new("transfer.bf")?;
+    file.write_str("+[->+<]")?;
+
+    let mut cmd = Command::cargo_bin("bf-tools")?;
+    cmd.args(["compile", "--target", "arm", "--input", file.path().to_str().unwrap()]);
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("// transfer"))
+        .stdout(predicate::str::contains("// loop start").not());
+    Ok(())
+}
+
 // ── llvm ──────────────────────────────────────────────────────────────────────
 
 #[test]
@@ -286,6 +300,20 @@ fn llvm_compiles_clear_loops_as_clear_ir() -> Result<(), Box<dyn std::error::Err
         .success()
         .stdout(predicate::str::contains("; clear"))
         .stdout(predicate::str::contains("entry:").and(predicate::str::contains("loop_0_check:").not()));
+    Ok(())
+}
+
+#[test]
+fn llvm_compiles_transfer_loops_as_transfer_ir() -> Result<(), Box<dyn std::error::Error>> {
+    let file = assert_fs::NamedTempFile::new("transfer.bf")?;
+    file.write_str("+[->+<]")?;
+
+    let mut cmd = Command::cargo_bin("bf-tools")?;
+    cmd.args(["compile", "--input", file.path().to_str().unwrap()]);
+    cmd.assert()
+        .success()
+        .stdout(predicate::str::contains("; transfer"))
+        .stdout(predicate::str::contains("loop_0_check:").not());
     Ok(())
 }
 

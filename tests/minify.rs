@@ -130,6 +130,32 @@ fn selected_fold_move_pass_is_available() -> Result<(), Box<dyn std::error::Erro
 }
 
 #[test]
+fn selected_transfer_loop_pass_is_available() -> Result<(), Box<dyn std::error::Error>> {
+    let file = assert_fs::NamedTempFile::new("selected-transfer-loop.bf")?;
+    file.write_str("[->++<]")?;
+
+    let mut cmd = Command::cargo_bin("bf-tools")?;
+    cmd.args([
+        "minify",
+        "--input", file.path().to_str().unwrap(),
+        "--pass", "canonicalize-transfer-loops",
+    ]);
+    cmd.assert().success().stdout(predicate::eq("[->++<]"));
+    Ok(())
+}
+
+#[test]
+fn default_pipeline_keeps_transfer_loop_semantics() -> Result<(), Box<dyn std::error::Error>> {
+    let file = assert_fs::NamedTempFile::new("default-transfer-loop.bf")?;
+    file.write_str("+[->+<]")?;
+
+    let mut cmd = Command::cargo_bin("bf-tools")?;
+    cmd.args(["minify", "--input", file.path().to_str().unwrap()]);
+    cmd.assert().success().stdout(predicate::eq("+[->+<]"));
+    Ok(())
+}
+
+#[test]
 fn default_pipeline_canonicalizes_clear_loops() -> Result<(), Box<dyn std::error::Error>> {
     let file = assert_fs::NamedTempFile::new("clear-loop.bf")?;
     file.write_str("+[++-]")?;

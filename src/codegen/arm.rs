@@ -85,6 +85,9 @@ fn emit(
                 writeln!(out).unwrap();
             }
             Instr::Clear => emit_clear(out),
+            Instr::Transfer(targets) => {
+                emit_transfer(targets, out, counter, tape_size, wrapping);
+            }
             Instr::Loop(body) => {
                 let label = *counter;
                 *counter += 1;
@@ -210,3 +213,96 @@ fn emit_clear(out: &mut dyn Write) {
     writeln!(out, "strb w1, [x0]").unwrap();
     writeln!(out).unwrap();
 }
+
+fn emit_transfer(
+    targets: &[(i64, i16)],
+    out: &mut dyn Write,
+    counter: &mut usize,
+    tape_size: usize,
+    wrapping: bool,
+) {
+    let done_label = *counter;
+    *counter += 1;
+
+    writeln!(out, "// transfer").unwrap();
+    writeln!(out, "ldr  x0, =tape").unwrap();
+    writeln!(out, "add  x0, x0, x3").unwrap();
+    writeln!(out, "ldrb w6, [x0]").unwrap();
+    writeln!(out, "cmp  w6, #0").unwrap();
+    writeln!(out, "beq  .Ltransfer_done_{done_label}").unwrap();
+
+    for (offset, factor) in targets {
+        if *factor == 0 {
+            continue;
+        }
+
+        emit_transfer_target_index(*offset, out, counter, tape_size, wrapping);
+
+        writeln!(out, "ldr  x0, =tape").unwrap();
+        writeln!(out, "add  x0, x0, x2").unwrap();
+        writeln!(out, "ldrb w1, [x0]").unwrap();
+
+        let amount = i32::from(*factor).unsigned_abs();
+        writeln!(out, "mov  w7, #{amount}").unwrap();
+        writeln!(out, "mul  w7, w6, w7").unwrap();
+        if *factor > 0 {
+            writeln!(out, "add  w1, w1, w7").unwrap();
+        } else {
+            writeln!(out, "sub  w1, w1, w7").unwrap();
+        }
+        writeln!(out, "strb w1, [x0]").unwrap();
+    }
+
+    writeln!(out, "ldr  x0, =tape").unwrap();
+    writeln!(out, "add  x0, x0, x3").unwrap();
+    writeln!(out, "mov  w1, #0").unwrap();
+    writeln!(out, "strb w1, [x0]").unwrap();
+    writeln!(out, ".Ltransfer_done_{done_label}:").unwrap();
+    writeln!(out).unwrap();
+}
+
+fn emit_transfer_target_index(
+    offset: i64,
+    out: &mut dyn Write,
+    counter: &mut usize,
+    tape_size: usize,
+    wrapping: bool,
+) {
+    if wrapping {
+        let shift = offset.rem_euclid(tape_size as i64);
+        writeln!(out, "ldr  x2, ={shift}").unwrap();
+        writeln!(out, "add  x2, x3, x2").unwrap();
+        writeln!(out, "ldr  x4, ={tape_size}").unwrap();
+        writeln!(out, "cmp  x2, x4").unwrap();
+        let wrapped_label = *counter;
+        *counter += 1;
+        writeln!(out, "blo  .Ltransfer_idx_ok_{wrapped_label}").unwrap();
+        writeln!(out, "sub  x2, x2, x4").unwrap();
+        writeln!(out, ".Ltransfer_idx_ok_{wrapped_label}:").unwrap();
+        return;
+    }
+
+    if offset >= 0 {
+        let amount = offset as usize;
+        if amount >= tape_size {
+            writeln!(out, "b    .L_oob").unwrap();
+            return;
+        }
+        writeln!(out, "ldr  x4, ={}", tape_size - amount).unwrap();
+        writeln!(out, "cmp  x3, x4").unwrap();
+        writeln!(out, "bhs  .L_oob").unwrap();
+        writeln!(out, "ldr  x2, ={amount}").unwrap();
+        writeln!(out, "add  x2, x3, x2").unwrap();
+    } else {
+        let amount = offset.unsigned_abs() as usize;
+        if amount >= tape_size {
+            writeln!(out, "b    .L_oob").unwrap();
+            return;
+        }
+        writeln!(out, "ldr  x4, ={amount}").unwrap();
+        writeln!(out, "cmp  x3, x4").unwrap();
+        writeln!(out, "blo  .L_oob").unwrap();
+        writeln!(out, "sub  x2, x3, x4").unwrap();
+    }
+}
+

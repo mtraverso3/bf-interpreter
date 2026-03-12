@@ -87,6 +87,10 @@ fn emit(program: &[Instr], out: &mut dyn Write, c: &mut usize, tape_size: usize,
 
             Instr::Clear => emit_clear(out, c, tape_size),
 
+            Instr::Transfer(targets) => {
+                emit_transfer(targets, out, c, tape_size, wrapping);
+            }
+
             Instr::Loop(body) => {
                 let lbl = next(c);
                 let (t0, t1, t2, t3) = (next(c), next(c), next(c), next(c));
@@ -217,3 +221,119 @@ fn emit_clear(out: &mut dyn Write, c: &mut usize, tape_size: usize) {
     .unwrap();
     writeln!(out, "  store i8 0, ptr %t{t1}").unwrap();
 }
+
+fn emit_transfer(
+    targets: &[(i64, i16)],
+    out: &mut dyn Write,
+    c: &mut usize,
+    tape_size: usize,
+    wrapping: bool,
+) {
+    let lbl = next(c);
+    let (dp, src_ptr, src, src_is_zero) = (next(c), next(c), next(c), next(c));
+
+    writeln!(out, "  ; transfer").unwrap();
+    writeln!(out, "  %t{dp} = load i64, ptr %dp, align 8").unwrap();
+    writeln!(
+        out,
+        "  %t{src_ptr} = getelementptr inbounds [{tape_size} x i8], ptr @tape, i64 0, i64 %t{dp}"
+    )
+    .unwrap();
+    writeln!(out, "  %t{src} = load i8, ptr %t{src_ptr}").unwrap();
+    writeln!(out, "  %t{src_is_zero} = icmp eq i8 %t{src}, 0").unwrap();
+    writeln!(
+        out,
+        "  br i1 %t{src_is_zero}, label %transfer_{lbl}_done, label %transfer_{lbl}_body"
+    )
+    .unwrap();
+
+    writeln!(out, "transfer_{lbl}_body:").unwrap();
+    let src16 = next(c);
+    writeln!(out, "  %t{src16} = zext i8 %t{src} to i16").unwrap();
+
+    for (offset, factor) in targets {
+        if *factor == 0 {
+            continue;
+        }
+
+        let idx = emit_transfer_target_index(*offset, out, c, tape_size, wrapping);
+        let (ptr, cur, cur16, mul, out16, out8) = (next(c), next(c), next(c), next(c), next(c), next(c));
+
+        writeln!(
+            out,
+            "  %t{ptr} = getelementptr inbounds [{tape_size} x i8], ptr @tape, i64 0, i64 %t{idx}"
+        )
+        .unwrap();
+        writeln!(out, "  %t{cur} = load i8, ptr %t{ptr}").unwrap();
+        writeln!(out, "  %t{cur16} = zext i8 %t{cur} to i16").unwrap();
+        writeln!(out, "  %t{mul} = mul i16 %t{src16}, {}", i32::from(*factor).unsigned_abs()).unwrap();
+        if *factor > 0 {
+            writeln!(out, "  %t{out16} = add i16 %t{cur16}, %t{mul}").unwrap();
+        } else {
+            writeln!(out, "  %t{out16} = sub i16 %t{cur16}, %t{mul}").unwrap();
+        }
+        writeln!(out, "  %t{out8} = trunc i16 %t{out16} to i8").unwrap();
+        writeln!(out, "  store i8 %t{out8}, ptr %t{ptr}").unwrap();
+    }
+
+    writeln!(out, "  store i8 0, ptr %t{src_ptr}").unwrap();
+    writeln!(out, "  br label %transfer_{lbl}_done").unwrap();
+    writeln!(out, "transfer_{lbl}_done:").unwrap();
+}
+
+fn emit_transfer_target_index(
+    offset: i64,
+    out: &mut dyn Write,
+    c: &mut usize,
+    tape_size: usize,
+    wrapping: bool,
+) -> usize {
+    let dp = next(c);
+    writeln!(out, "  %t{dp} = load i64, ptr %dp, align 8").unwrap();
+
+    if wrapping {
+        let shift = offset.rem_euclid(tape_size as i64);
+        let (sum, wrap, sub, idx) = (next(c), next(c), next(c), next(c));
+        writeln!(out, "  %t{sum} = add i64 %t{dp}, {shift}").unwrap();
+        writeln!(out, "  %t{wrap} = icmp uge i64 %t{sum}, {tape_size}").unwrap();
+        writeln!(out, "  %t{sub} = sub i64 %t{sum}, {tape_size}").unwrap();
+        writeln!(out, "  %t{idx} = select i1 %t{wrap}, i64 %t{sub}, i64 %t{sum}").unwrap();
+        return idx;
+    }
+
+    if offset >= 0 {
+        let amount = offset as usize;
+        if amount >= tape_size {
+            let dead = next(c);
+            writeln!(out, "  br label %oob").unwrap();
+            writeln!(out, "transfer_idx_dead_{dead}:").unwrap();
+            let idx = next(c);
+            writeln!(out, "  %t{idx} = add i64 %t{dp}, 0").unwrap();
+            return idx;
+        }
+        let (ok, idx) = (next(c), next(c));
+        let max_start = tape_size - 1 - amount;
+        writeln!(out, "  %t{ok} = icmp ule i64 %t{dp}, {max_start}").unwrap();
+        writeln!(out, "  br i1 %t{ok}, label %transfer_idx_ok_{idx}, label %oob").unwrap();
+        writeln!(out, "transfer_idx_ok_{idx}:").unwrap();
+        writeln!(out, "  %t{idx} = add i64 %t{dp}, {amount}").unwrap();
+        return idx;
+    }
+
+    let amount = offset.unsigned_abs() as usize;
+    if amount >= tape_size {
+        let dead = next(c);
+        writeln!(out, "  br label %oob").unwrap();
+        writeln!(out, "transfer_idx_dead_{dead}:").unwrap();
+        let idx = next(c);
+        writeln!(out, "  %t{idx} = add i64 %t{dp}, 0").unwrap();
+        return idx;
+    }
+    let (ok, idx) = (next(c), next(c));
+    writeln!(out, "  %t{ok} = icmp uge i64 %t{dp}, {amount}").unwrap();
+    writeln!(out, "  br i1 %t{ok}, label %transfer_idx_ok_{idx}, label %oob").unwrap();
+    writeln!(out, "transfer_idx_ok_{idx}:").unwrap();
+    writeln!(out, "  %t{idx} = sub i64 %t{dp}, {amount}").unwrap();
+    idx
+}
+

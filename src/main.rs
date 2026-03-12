@@ -27,6 +27,8 @@ enum OptimizePass {
     FoldAddSub,
     /// Fold contiguous same-direction pointer movement runs into counted moves.
     FoldMove,
+    /// Canonicalize transfer loops like `[->+<]` into a dedicated IR transfer op.
+    CanonicalizeTransferLoops,
     /// Canonicalize `[+]` and `[-]` style zeroing loops to `[-]`.
     CanonicalizeClearLoops,
     /// Remove loops that are provably dead because the current cell is known to be zero.
@@ -162,6 +164,9 @@ fn main() {
                     .map(|p| match p {
                         OptimizePass::FoldAddSub => minify::PassId::FoldAddSub,
                         OptimizePass::FoldMove => minify::PassId::FoldMove,
+                        OptimizePass::CanonicalizeTransferLoops => {
+                            minify::PassId::CanonicalizeTransferLoops
+                        }
                         OptimizePass::CanonicalizeClearLoops => {
                             minify::PassId::CanonicalizeClearLoops
                         }

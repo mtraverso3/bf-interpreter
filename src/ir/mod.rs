@@ -18,6 +18,10 @@ pub enum Instr {
     Loop(Program),
     /// Set the current cell to zero.
     Clear,
+    /// Distribute the current cell value to relative offsets, then clear current cell.
+    ///
+    /// Each pair is (offset, factor). For example, `[->++<]` lowers to `Transfer([(1, 2)])`.
+    Transfer(Vec<(i64, i16)>),
 }
 
 /// Lower the parsed Brainfuck AST into the richer IR without changing semantics.
@@ -71,7 +75,29 @@ fn emit_into(program: &[Instr], out: &mut String) {
                 out.push(']');
             }
             Instr::Clear => out.push_str("[-]"),
+            Instr::Transfer(targets) => emit_transfer(targets, out),
         }
+    }
+}
+
+fn emit_transfer(targets: &[(i64, i16)], out: &mut String) {
+    out.push('[');
+    out.push('-');
+
+    for (offset, factor) in targets {
+        emit_move(*offset, out);
+        emit_add(*factor, out);
+        emit_move(-*offset, out);
+    }
+
+    out.push(']');
+}
+
+fn emit_move(delta: i64, out: &mut String) {
+    if delta > 0 {
+        out.extend(std::iter::repeat_n('>', delta as usize));
+    } else if delta < 0 {
+        out.extend(std::iter::repeat_n('<', delta.unsigned_abs() as usize));
     }
 }
 
@@ -133,5 +159,12 @@ mod tests {
     #[test]
     fn emit_brainfuck_uses_clear_canonical_form() {
         assert_eq!(emit_brainfuck(&[Instr::Clear]), "[-]");
+    }
+
+    #[test]
+    fn emit_brainfuck_emits_transfer_loop() {
+        let ir = vec![Instr::Transfer(vec![(1, 2), (-1, -1)])];
+
+        assert_eq!(emit_brainfuck(&ir), "[->++<<->]");
     }
 }
