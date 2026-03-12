@@ -1,11 +1,10 @@
 ## Brainfuck Interpreter & Compiler
 
-This repository contains a Brainfuck CLI with two modes:
+This repository contains a Brainfuck CLI with two tools:
 
 - `interpret`: run Brainfuck programs directly.
 - `compile`: compile Brainfuck programs to either LLVM IR or AArch64 Linux assembly.
 
-The parser builds an AST first, then both execution backends operate on that AST.
 
 ### Building
 
@@ -13,68 +12,53 @@ The parser builds an AST first, then both execution backends operate on that AST
 cargo build --release
 ```
 
-Binary path:
-
-- `./target/release/brainfuck-interpreter`
+The binary can be found at `./target/release/bf-tools`.
 
 ### Usage
 
-#### Interpret mode
+#### Interpreter
 
-```bash
-./target/release/brainfuck-interpreter interpret --input /path/to/program.bf
+```
+Usage: bf-tools interpret [OPTIONS] --input <INPUT>
+
+Options:
+  -i, --input <INPUT>    Path to the Brainfuck source file
+  -o, --output <OUTPUT>  Optional file to write output to. Defaults to stdout
+  -w, --wrapping         Enable wrapping of the data pointer at tape boundaries
+  -s, --size <SIZE>      Size of the memory tape in cells [default: 30000]
+  -d, --debug            Print the memory tape state at each instruction (debug mode)
 ```
 
-Flags:
-
-- `-i, --input <INPUT>`: Brainfuck source file path (required)
-- `-o, --output <OUTPUT>`: optional output file (defaults to stdout)
-- `-w, --wrapping`: enable data pointer wrapping at tape boundaries
-- `-s, --size <SIZE>`: tape size in cells (default: `30000`, must be `> 0`)
-- `-d, --debug`: print interpreter state at each instruction
-
-`','` input semantics in interpreter are byte-based: read exactly one byte from stdin (EOF maps to `0`).
 
 #### Compile mode
 
-```bash
-./target/release/brainfuck-interpreter compile --input /path/to/program.bf
 ```
+Usage: bf-tools compile [OPTIONS] --input <INPUT>
 
-Flags:
+Options:
+  -i, --input <INPUT>
+          Path to the Brainfuck source file
 
-- `-i, --input <INPUT>`: Brainfuck source file path (required)
-- `-o, --output <OUTPUT>`: optional output file (defaults to stdout)
-- `-t, --target <TARGET>`: output target (`llvm` default, `arm` optional)
-- `-w, --wrapping`: emit wrapping pointer behavior in generated code
-- `-s, --size <SIZE>`: tape size in cells (default: `30000`, must be `> 0`)
+  -o, --output <OUTPUT>
+          Optional file to write the compiled output to. Defaults to stdout
 
-### Targets
+  -w, --wrapping
+          Enable wrapping of the data pointer at tape boundaries
 
-#### LLVM IR (default)
+  -s, --size <SIZE>
+          Size of the memory tape in cells
+          
+          [default: 30000]
 
-Generate `.ll` and build with clang:
+  -t, --target <TARGET>
+          Output target format
+          
+          [default: llvm]
 
-```bash
-./target/release/brainfuck-interpreter compile --input my.bf --output out.ll
-clang -O2 -o program out.ll
-./program
-```
+          Possible values:
+          - llvm: LLVM IR (.ll) — compile with: clang -O2 -o program out.ll
+          - arm:  AArch64 Linux assembly (.s) — assemble with: as out.s -o out.o && ld out.o -o program
 
-#### AArch64 Linux assembly
-
-Generate `.s` for AArch64 Linux:
-
-```bash
-./target/release/brainfuck-interpreter compile --target arm --input my.bf --output out.s
-```
-
-Assemble and link on an AArch64 Linux system:
-
-```bash
-as -o out.o out.s
-ld -o program out.o
-./program
 ```
 
 ### License

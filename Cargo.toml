@@ -1,5 +1,6 @@
 [package]
-name = "brainfuck-interpreter"
+name = "bf-tools"
+description = "A collection of tools for working with Brainfuck code."
 version = "0.1.0"
 edition = "2021"
 authors = ["Marcos Traverso"]

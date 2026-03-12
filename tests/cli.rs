@@ -8,7 +8,7 @@ use std::process::Command;
 
 #[test]
 fn interpret_hello_world() -> Result<(), Box<dyn std::error::Error>> {
-    let mut cmd = Command::cargo_bin("brainfuck-interpreter")?;
+    let mut cmd = Command::cargo_bin("bf-tools")?;
     cmd.args(["interpret", "--input", "tests/programs/hello_world.bf"]);
     cmd.assert()
         .stdout(predicate::eq("Hello World!\n"))
@@ -18,7 +18,7 @@ fn interpret_hello_world() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn interpret_print_no_loop() -> Result<(), Box<dyn std::error::Error>> {
-    let mut cmd = Command::cargo_bin("brainfuck-interpreter")?;
+    let mut cmd = Command::cargo_bin("bf-tools")?;
     cmd.args(["interpret", "--input", "tests/programs/print_no_loop.bf"]);
     cmd.assert().stdout(predicate::eq("A")).success();
     Ok(())
@@ -27,7 +27,7 @@ fn interpret_print_no_loop() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn interpret_simple_loop_skipped_when_cell_is_zero() -> Result<(), Box<dyn std::error::Error>> {
     // [[]] — outer loop is never entered because cell 0 starts at 0; no output
-    let mut cmd = Command::cargo_bin("brainfuck-interpreter")?;
+    let mut cmd = Command::cargo_bin("bf-tools")?;
     cmd.args(["interpret", "--input", "tests/programs/simple_loop.bf"]);
     cmd.assert().stdout(predicate::str::is_empty()).success();
     Ok(())
@@ -37,7 +37,7 @@ fn interpret_simple_loop_skipped_when_cell_is_zero() -> Result<(), Box<dyn std::
 fn interpret_output_to_file() -> Result<(), Box<dyn std::error::Error>> {
     let out = assert_fs::NamedTempFile::new("out.txt")?;
 
-    let mut cmd = Command::cargo_bin("brainfuck-interpreter")?;
+    let mut cmd = Command::cargo_bin("bf-tools")?;
     cmd.args([
         "interpret",
         "--input",
@@ -56,7 +56,7 @@ fn interpret_pointer_underflow_fails_without_wrapping() -> Result<(), Box<dyn st
     let file = assert_fs::NamedTempFile::new("underflow.bf")?;
     file.write_str("<")?;
 
-    let mut cmd = Command::cargo_bin("brainfuck-interpreter")?;
+    let mut cmd = Command::cargo_bin("bf-tools")?;
     cmd.args(["interpret", "--input", file.path().to_str().unwrap()]);
     cmd.assert()
         .failure()
@@ -70,7 +70,7 @@ fn interpret_pointer_overflow_fails_without_wrapping() -> Result<(), Box<dyn std
     // size defaults to 30000; move past the end
     file.write_str(&format!("{}>", ">".repeat(30000)))?;
 
-    let mut cmd = Command::cargo_bin("brainfuck-interpreter")?;
+    let mut cmd = Command::cargo_bin("bf-tools")?;
     cmd.args(["interpret", "--input", file.path().to_str().unwrap()]);
     cmd.assert()
         .failure()
@@ -84,7 +84,7 @@ fn interpret_pointer_wraps_with_wrapping_enabled() -> Result<(), Box<dyn std::er
     // Move to cell 2, set it to 'A' (65), then wrap pointer back to it with size=3
     file.write_str(&format!(">>{}<<<.", "+".repeat(65)))?;
 
-    let mut cmd = Command::cargo_bin("brainfuck-interpreter")?;
+    let mut cmd = Command::cargo_bin("bf-tools")?;
     cmd.args([
         "interpret",
         "--input",
@@ -103,7 +103,7 @@ fn interpret_cell_value_wraps_on_overflow() -> Result<(), Box<dyn std::error::Er
     // 257 increments on a u8 starting at 0: wraps through 256→0, then 257→1; print \x01
     file.write_str(&format!("{}.", "+".repeat(257)))?;
 
-    let mut cmd = Command::cargo_bin("brainfuck-interpreter")?;
+    let mut cmd = Command::cargo_bin("bf-tools")?;
     cmd.args(["interpret", "--input", file.path().to_str().unwrap()]);
     cmd.assert().stdout(predicate::eq("\x01")).success();
     Ok(())
@@ -114,7 +114,7 @@ fn interpret_unmatched_open_bracket_fails() -> Result<(), Box<dyn std::error::Er
     let file = assert_fs::NamedTempFile::new("unmatched-open.bf")?;
     file.write_str("+[")?;
 
-    let mut cmd = Command::cargo_bin("brainfuck-interpreter")?;
+    let mut cmd = Command::cargo_bin("bf-tools")?;
     cmd.args(["interpret", "--input", file.path().to_str().unwrap()]);
     cmd.assert()
         .failure()
@@ -127,7 +127,7 @@ fn interpret_unmatched_close_bracket_fails() -> Result<(), Box<dyn std::error::E
     let file = assert_fs::NamedTempFile::new("unmatched-close.bf")?;
     file.write_str("+]")?;
 
-    let mut cmd = Command::cargo_bin("brainfuck-interpreter")?;
+    let mut cmd = Command::cargo_bin("bf-tools")?;
     cmd.args(["interpret", "--input", file.path().to_str().unwrap()]);
     cmd.assert()
         .failure()
@@ -137,7 +137,7 @@ fn interpret_unmatched_close_bracket_fails() -> Result<(), Box<dyn std::error::E
 
 #[test]
 fn interpret_debug_flag_does_not_crash() -> Result<(), Box<dyn std::error::Error>> {
-    let mut cmd = Command::cargo_bin("brainfuck-interpreter")?;
+    let mut cmd = Command::cargo_bin("bf-tools")?;
     cmd.args([
         "interpret",
         "--input",
@@ -154,7 +154,7 @@ fn interpret_input_reads_single_byte() -> Result<(), Box<dyn std::error::Error>>
     let file = assert_fs::NamedTempFile::new("read-byte.bf")?;
     file.write_str(",.")?;
 
-    let mut cmd = Command::cargo_bin("brainfuck-interpreter")?;
+    let mut cmd = Command::cargo_bin("bf-tools")?;
     cmd.args(["interpret", "--input", file.path().to_str().unwrap()]);
     cmd.stdin(std::process::Stdio::piped());
     cmd.stdout(std::process::Stdio::piped());
@@ -170,7 +170,7 @@ fn interpret_input_reads_single_byte() -> Result<(), Box<dyn std::error::Error>>
 
 #[test]
 fn interpret_size_zero_fails_validation() -> Result<(), Box<dyn std::error::Error>> {
-    let mut cmd = Command::cargo_bin("brainfuck-interpreter")?;
+    let mut cmd = Command::cargo_bin("bf-tools")?;
     cmd.args([
         "interpret",
         "--input",
@@ -188,7 +188,7 @@ fn interpret_size_zero_fails_validation() -> Result<(), Box<dyn std::error::Erro
 
 #[test]
 fn compile_arm_emits_valid_assembly_structure() -> Result<(), Box<dyn std::error::Error>> {
-    let mut cmd = Command::cargo_bin("brainfuck-interpreter")?;
+    let mut cmd = Command::cargo_bin("bf-tools")?;
     cmd.args(["compile", "--target", "arm", "--input", "tests/programs/hello_world.bf"]);
     cmd.assert()
         .success()
@@ -203,7 +203,7 @@ fn compile_arm_emits_valid_assembly_structure() -> Result<(), Box<dyn std::error
 fn compile_arm_output_to_file() -> Result<(), Box<dyn std::error::Error>> {
     let out = assert_fs::NamedTempFile::new("out.s")?;
 
-    let mut cmd = Command::cargo_bin("brainfuck-interpreter")?;
+    let mut cmd = Command::cargo_bin("bf-tools")?;
     cmd.args([
         "compile", "--target", "arm",
         "--input",  "tests/programs/hello_world.bf",
@@ -218,7 +218,7 @@ fn compile_arm_output_to_file() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn compile_arm_honors_size_and_non_wrapping_checks() -> Result<(), Box<dyn std::error::Error>> {
-    let mut cmd = Command::cargo_bin("brainfuck-interpreter")?;
+    let mut cmd = Command::cargo_bin("bf-tools")?;
     cmd.args([
         "compile",
         "--target",
@@ -237,7 +237,7 @@ fn compile_arm_honors_size_and_non_wrapping_checks() -> Result<(), Box<dyn std::
 
 #[test]
 fn compile_arm_wrapping_omits_oob_handler() -> Result<(), Box<dyn std::error::Error>> {
-    let mut cmd = Command::cargo_bin("brainfuck-interpreter")?;
+    let mut cmd = Command::cargo_bin("bf-tools")?;
     cmd.args([
         "compile",
         "--target",
@@ -260,7 +260,7 @@ fn compile_arm_sibling_loop_labels_are_unique() -> Result<(), Box<dyn std::error
     let file = assert_fs::NamedTempFile::new("two-loops.bf")?;
     file.write_str("[-][+]")?;
 
-    let mut cmd = Command::cargo_bin("brainfuck-interpreter")?;
+    let mut cmd = Command::cargo_bin("bf-tools")?;
     cmd.args(["compile", "--target", "arm", "--input", file.path().to_str().unwrap()]);
     let output = cmd.output()?;
     let stdout = String::from_utf8(output.stdout)?;
@@ -275,7 +275,7 @@ fn compile_arm_nested_loop_labels_are_unique() -> Result<(), Box<dyn std::error:
     let file = assert_fs::NamedTempFile::new("nested-loops.bf")?;
     file.write_str("[[-]]")?;
 
-    let mut cmd = Command::cargo_bin("brainfuck-interpreter")?;
+    let mut cmd = Command::cargo_bin("bf-tools")?;
     cmd.args(["compile", "--target", "arm", "--input", file.path().to_str().unwrap()]);
     let output = cmd.output()?;
     let stdout = String::from_utf8(output.stdout)?;
@@ -290,7 +290,7 @@ fn compile_arm_nested_loop_labels_are_unique() -> Result<(), Box<dyn std::error:
 #[test]
 fn compile_llvm_emits_valid_ir_structure() -> Result<(), Box<dyn std::error::Error>> {
     // Default target is llvm — no --target flag needed
-    let mut cmd = Command::cargo_bin("brainfuck-interpreter")?;
+    let mut cmd = Command::cargo_bin("bf-tools")?;
     cmd.args(["compile", "--input", "tests/programs/hello_world.bf"]);
     cmd.assert()
         .success()
@@ -306,7 +306,7 @@ fn compile_llvm_emits_valid_ir_structure() -> Result<(), Box<dyn std::error::Err
 fn compile_llvm_output_to_file() -> Result<(), Box<dyn std::error::Error>> {
     let out = assert_fs::NamedTempFile::new("out.ll")?;
 
-    let mut cmd = Command::cargo_bin("brainfuck-interpreter")?;
+    let mut cmd = Command::cargo_bin("bf-tools")?;
     cmd.args([
         "compile",
         "--input",  "tests/programs/hello_world.bf",
@@ -321,7 +321,7 @@ fn compile_llvm_output_to_file() -> Result<(), Box<dyn std::error::Error>> {
 
 #[test]
 fn compile_llvm_honors_size_and_non_wrapping_checks() -> Result<(), Box<dyn std::error::Error>> {
-    let mut cmd = Command::cargo_bin("brainfuck-interpreter")?;
+    let mut cmd = Command::cargo_bin("bf-tools")?;
     cmd.args([
         "compile",
         "--input",
@@ -338,7 +338,7 @@ fn compile_llvm_honors_size_and_non_wrapping_checks() -> Result<(), Box<dyn std:
 
 #[test]
 fn compile_llvm_wrapping_omits_oob_handler() -> Result<(), Box<dyn std::error::Error>> {
-    let mut cmd = Command::cargo_bin("brainfuck-interpreter")?;
+    let mut cmd = Command::cargo_bin("bf-tools")?;
     cmd.args([
         "compile",
         "--input",
@@ -359,7 +359,7 @@ fn compile_llvm_sibling_loop_labels_are_unique() -> Result<(), Box<dyn std::erro
     let file = assert_fs::NamedTempFile::new("two-loops.bf")?;
     file.write_str("[-][+]")?;
 
-    let mut cmd = Command::cargo_bin("brainfuck-interpreter")?;
+    let mut cmd = Command::cargo_bin("bf-tools")?;
     cmd.args(["compile", "--input", file.path().to_str().unwrap()]);
     let output = cmd.output()?;
     let stdout = String::from_utf8(output.stdout)?;
@@ -374,7 +374,7 @@ fn compile_llvm_nested_loop_labels_are_unique() -> Result<(), Box<dyn std::error
     let file = assert_fs::NamedTempFile::new("nested-loops.bf")?;
     file.write_str("[[-]]")?;
 
-    let mut cmd = Command::cargo_bin("brainfuck-interpreter")?;
+    let mut cmd = Command::cargo_bin("bf-tools")?;
     cmd.args(["compile", "--input", file.path().to_str().unwrap()]);
     let output = cmd.output()?;
     let stdout = String::from_utf8(output.stdout)?;
@@ -387,7 +387,7 @@ fn compile_llvm_nested_loop_labels_are_unique() -> Result<(), Box<dyn std::error
 
 #[test]
 fn compile_llvm_dp_initialised_to_zero() -> Result<(), Box<dyn std::error::Error>> {
-    let mut cmd = Command::cargo_bin("brainfuck-interpreter")?;
+    let mut cmd = Command::cargo_bin("bf-tools")?;
     cmd.args(["compile", "--input", "tests/programs/print_no_loop.bf"]);
     cmd.assert()
         .success()
@@ -400,7 +400,7 @@ fn compile_llvm_output_uses_putchar() -> Result<(), Box<dyn std::error::Error>> 
     let file = assert_fs::NamedTempFile::new("dot.bf")?;
     file.write_str(".")?;
 
-    let mut cmd = Command::cargo_bin("brainfuck-interpreter")?;
+    let mut cmd = Command::cargo_bin("bf-tools")?;
     cmd.args(["compile", "--input", file.path().to_str().unwrap()]);
     cmd.assert()
         .success()
@@ -413,7 +413,7 @@ fn compile_llvm_input_uses_getchar() -> Result<(), Box<dyn std::error::Error>> {
     let file = assert_fs::NamedTempFile::new("comma.bf")?;
     file.write_str(",")?;
 
-    let mut cmd = Command::cargo_bin("brainfuck-interpreter")?;
+    let mut cmd = Command::cargo_bin("bf-tools")?;
     cmd.args(["compile", "--input", file.path().to_str().unwrap()]);
     cmd.assert()
         .success()
@@ -426,7 +426,7 @@ fn compile_llvm_input_maps_eof_to_zero() -> Result<(), Box<dyn std::error::Error
     let file = assert_fs::NamedTempFile::new("comma.bf")?;
     file.write_str(",")?;
 
-    let mut cmd = Command::cargo_bin("brainfuck-interpreter")?;
+    let mut cmd = Command::cargo_bin("bf-tools")?;
     cmd.args(["compile", "--input", file.path().to_str().unwrap()]);
     cmd.assert()
         .success()
@@ -441,7 +441,7 @@ fn compile_unmatched_open_bracket_fails() -> Result<(), Box<dyn std::error::Erro
     let file = assert_fs::NamedTempFile::new("bad-open.bf")?;
     file.write_str("+[")?;
 
-    let mut cmd = Command::cargo_bin("brainfuck-interpreter")?;
+    let mut cmd = Command::cargo_bin("bf-tools")?;
     cmd.args(["compile", "--input", file.path().to_str().unwrap()]);
     cmd.assert()
         .failure()
@@ -454,7 +454,7 @@ fn compile_unmatched_close_bracket_fails() -> Result<(), Box<dyn std::error::Err
     let file = assert_fs::NamedTempFile::new("bad-close.bf")?;
     file.write_str("+]")?;
 
-    let mut cmd = Command::cargo_bin("brainfuck-interpreter")?;
+    let mut cmd = Command::cargo_bin("bf-tools")?;
     cmd.args(["compile", "--input", file.path().to_str().unwrap()]);
     cmd.assert()
         .failure()
@@ -464,7 +464,7 @@ fn compile_unmatched_close_bracket_fails() -> Result<(), Box<dyn std::error::Err
 
 #[test]
 fn compile_size_zero_fails_validation() -> Result<(), Box<dyn std::error::Error>> {
-    let mut cmd = Command::cargo_bin("brainfuck-interpreter")?;
+    let mut cmd = Command::cargo_bin("bf-tools")?;
     cmd.args([
         "compile",
         "--input",
