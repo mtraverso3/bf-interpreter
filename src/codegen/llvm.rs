@@ -1,7 +1,7 @@
 use std::io::Write;
 
-use crate::io_utils::create_output_writer;
-use crate::parser::Node;
+use crate::common::create_output_writer;
+use crate::syntax::Node;
 
 pub fn compile_llvm(nodes: &[Node], output_path: Option<String>, tape_size: usize, wrapping: bool) {
     let mut out_writer = create_output_writer(output_path);
@@ -182,3 +182,4 @@ fn emit(nodes: &[Node], out: &mut dyn Write, c: &mut usize, tape_size: usize, wr
         }
     }
 }
+

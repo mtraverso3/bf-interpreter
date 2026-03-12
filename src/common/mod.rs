@@ -20,3 +20,4 @@ pub fn create_output_writer(output_path: Option<String>) -> Box<dyn Write> {
     }
 }
 
+

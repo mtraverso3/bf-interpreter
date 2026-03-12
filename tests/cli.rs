@@ -547,3 +547,31 @@ fn compress_unmatched_open_bracket_fails() -> Result<(), Box<dyn std::error::Err
     Ok(())
 }
 
+#[test]
+fn minify_no_optimize_keeps_ast_instruction_order() -> Result<(), Box<dyn std::error::Error>> {
+    let file = assert_fs::NamedTempFile::new("no-opt.bf")?;
+    file.write_str("a+++-b")?;
+
+    let mut cmd = Command::cargo_bin("bf-tools")?;
+    cmd.args(["minify", "--input", file.path().to_str().unwrap(), "--no-optimize"]);
+    cmd.assert().success().stdout(predicate::eq("+++-"));
+    Ok(())
+}
+
+#[test]
+fn minify_selected_passes_are_applied() -> Result<(), Box<dyn std::error::Error>> {
+    let file = assert_fs::NamedTempFile::new("selected-pass.bf")?;
+    file.write_str("a+++-b")?;
+
+    let mut cmd = Command::cargo_bin("bf-tools")?;
+    cmd.args([
+        "minify",
+        "--input",
+        file.path().to_str().unwrap(),
+        "--pass",
+        "fold-add-sub",
+    ]);
+    cmd.assert().success().stdout(predicate::eq("++"));
+    Ok(())
+}
+

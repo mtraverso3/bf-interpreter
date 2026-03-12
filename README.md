@@ -4,7 +4,7 @@ This repository contains a Brainfuck CLI with three tools:
 
 - `interpret`: run Brainfuck programs directly.
 - `compile`: compile Brainfuck programs to either LLVM IR or AArch64 Linux assembly.
-- `minify`: removes non-Brainfuck characters and shrink redundant `+/-` runs.
+- `minify`: removes non-Brainfuck characters and runs optimization passes.
 
 
 ### Building
@@ -48,18 +48,31 @@ Options:
 
   -s, --size <SIZE>
           Size of the memory tape in cells
-          
+
           [default: 30000]
 
   -t, --target <TARGET>
           Output target format
-          
+
           [default: llvm]
 
           Possible values:
           - llvm: LLVM IR (.ll) — compile with: clang -O2 -o program out.ll
           - arm:  AArch64 Linux assembly (.s) — assemble with: as out.s -o out.o && ld out.o -o program
+```
 
+#### Minify
+
+```
+Usage: bf-tools minify [OPTIONS] --input <INPUT>
+
+Options:
+  -i, --input <INPUT>      Path to the Brainfuck source file
+  -o, --output <OUTPUT>    Optional file to write the minified output to. Defaults to stdout
+  --no-optimize            Disable all optimization passes (still strips comments/whitespace)
+  --pass <PASS>            Optimization passes to run. Repeat this flag to run multiple passes
+      Possible values:
+      - fold-add-sub: Fold contiguous +/- runs modulo 256 and keep the shorter direction
 ```
 
 ### License

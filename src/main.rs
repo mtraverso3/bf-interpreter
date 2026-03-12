@@ -5,12 +5,11 @@ use std::process;
 use clap::{Parser, Subcommand};
 use colored::Colorize;
 
-mod compile_arm;
-mod compile_llvm;
-mod compress;
-mod interpreter;
-mod io_utils;
-mod parser;
+mod codegen;
+mod common;
+mod minify;
+mod runtime;
+mod syntax;
 
 /// Compilation output target.
 #[derive(clap::ValueEnum, Clone, Debug)]
@@ -19,6 +18,12 @@ enum Target {
     Llvm,
     /// AArch64 Linux assembly (.s) — assemble with: as out.s -o out.o && ld out.o -o program
     Arm,
+}
+
+#[derive(clap::ValueEnum, Clone, Debug)]
+enum OptimizePass {
+    /// Fold contiguous +/- runs modulo 256 and keep the shorter direction.
+    FoldAddSub,
 }
 
 /// A Brainfuck interpreter and AArch64 / LLVM IR compiler.
@@ -78,7 +83,8 @@ enum Command {
     },
 
     /// Minify a Brainfuck source program by removing non-instruction characters
-    /// and minimizing redundant +/- instruction runs.
+    /// and applying selected AST optimization passes.
+    #[command(alias = "compress")]
     Minify {
         /// Path to the Brainfuck source file.
         #[arg(short, long)]
@@ -87,6 +93,14 @@ enum Command {
         /// Optional file to write the minified output to. Defaults to stdout.
         #[arg(short, long)]
         output: Option<String>,
+
+        /// Disable all optimization passes (still strips comments/whitespace).
+        #[arg(long, conflicts_with = "pass")]
+        no_optimize: bool,
+
+        /// Optimization passes to run. Repeat this flag to run multiple passes.
+        #[arg(long = "pass", value_enum)]
+        pass: Vec<OptimizePass>,
     },
 }
 
@@ -104,7 +118,7 @@ fn main() {
             validate_size(size);
             let source = read_program(&input);
             let nodes = parse(&source);
-            interpreter::interpret(&nodes, output, wrapping, size, debug);
+            runtime::interpret(&nodes, output, wrapping, size, debug);
         }
         Command::Compile {
             input,
@@ -117,14 +131,34 @@ fn main() {
             let source = read_program(&input);
             let nodes = parse(&source);
             match target {
-                Target::Llvm => compile_llvm::compile_llvm(&nodes, output, size, wrapping),
-                Target::Arm => compile_arm::compile_arm(&nodes, output, size, wrapping),
+                Target::Llvm => codegen::llvm::compile_llvm(&nodes, output, size, wrapping),
+                Target::Arm => codegen::arm::compile_arm(&nodes, output, size, wrapping),
             }
         }
-        Command::Minify { input, output } => {
+        Command::Minify {
+            input,
+            output,
+            no_optimize,
+            pass,
+        } => {
             let source = read_program(&input);
             let nodes = parse(&source);
-            compress::compress(&nodes, output);
+
+            let config = if no_optimize {
+                minify::OptimizeConfig::None
+            } else if pass.is_empty() {
+                minify::OptimizeConfig::Default
+            } else {
+                let selected = pass
+                    .into_iter()
+                    .map(|p| match p {
+                        OptimizePass::FoldAddSub => minify::PassId::FoldAddSub,
+                    })
+                    .collect();
+                minify::OptimizeConfig::Selected(selected)
+            };
+
+            minify::compress(&nodes, output, config);
         }
     }
 }
@@ -157,8 +191,8 @@ fn read_program(path: &str) -> String {
     program
 }
 
-fn parse(source: &str) -> Vec<parser::Node> {
-    parser::parse(source).unwrap_or_else(|err| {
+fn parse(source: &str) -> Vec<syntax::Node> {
+    syntax::parse(source).unwrap_or_else(|err| {
         eprintln!("{}", format!("Error: {err}").red());
         process::exit(1);
     })

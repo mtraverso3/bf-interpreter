@@ -3,8 +3,8 @@ use std::{io, process};
 
 use colored::Colorize;
 
-use crate::io_utils::create_output_writer;
-use crate::parser::Node;
+use crate::common::create_output_writer;
+use crate::syntax::Node;
 
 pub fn interpret(
     nodes: &[Node],
@@ -105,3 +105,4 @@ fn run(
         }
     }
 }
+
