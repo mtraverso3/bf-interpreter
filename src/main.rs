@@ -5,8 +5,9 @@ use std::process;
 use clap::{Parser, Subcommand};
 use colored::Colorize;
 
-mod interpreter;
 mod compile_arm;
+mod interpreter;
+mod parser;
 
 /// A Brainfuck interpreter and AArch64 compiler.
 #[derive(Parser)]
@@ -57,28 +58,49 @@ fn main() {
     let args = Cli::parse();
 
     match args.command {
-        Command::Interpret { input, output, wrapping, size, debug } => {
-            let program = read_program(&input);
-            interpreter::interpret(program, output, wrapping, size, debug);
+        Command::Interpret {
+            input,
+            output,
+            wrapping,
+            size,
+            debug,
+        } => {
+            let source = read_program(&input);
+            let nodes = parse(&source);
+            interpreter::interpret(&nodes, output, wrapping, size, debug);
         }
         Command::Compile { input, output } => {
-            let program = read_program(&input);
-            compile_arm::compile_arm(program, output);
+            let source = read_program(&input);
+            let nodes = parse(&source);
+            compile_arm::compile_arm(&nodes, output);
         }
     }
 }
 
 fn read_program(path: &str) -> String {
     let mut file = File::open(path).unwrap_or_else(|err| {
-        eprintln!("{}", format!("Error: Unable to open input file: {err}").red());
+        eprintln!(
+            "{}",
+            format!("Error: Unable to open input file: {err}").red()
+        );
         process::exit(1);
     });
 
     let mut program = String::new();
     file.read_to_string(&mut program).unwrap_or_else(|err| {
-        eprintln!("{}", format!("Error: Unable to read input file: {err}").red());
+        eprintln!(
+            "{}",
+            format!("Error: Unable to read input file: {err}").red()
+        );
         process::exit(1);
     });
 
     program
+}
+
+fn parse(source: &str) -> Vec<parser::Node> {
+    parser::parse(source).unwrap_or_else(|err| {
+        eprintln!("{}", format!("Error: {err}").red());
+        process::exit(1);
+    })
 }
