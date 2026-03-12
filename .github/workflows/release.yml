@@ -1,0 +1,105 @@
+name: Release
+
+# Triggered when a tag matching v* is pushed (e.g. v1.0.0).
+# Create a release with:  git tag v1.0.0 && git push origin v1.0.0
+on:
+  push:
+    tags:
+      - "v*"
+
+# Needed to create/update GitHub Releases and upload assets.
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # ── Run the test suite before building release binaries ──────────────────────
+  test:
+    name: Test before release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-
+      - name: Run tests
+        run: cargo test --locked --verbose
+
+  # ── Build & publish one binary per platform ───────────────────────────────────
+  release:
+    name: Release – ${{ matrix.platform.os_name }}
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          # ── Linux ─────────────────────────────────────────────────────────────
+          - os_name: Linux-x86_64
+            os: ubuntu-24.04
+            target: x86_64-unknown-linux-musl
+
+          - os_name: Linux-aarch64
+            os: ubuntu-24.04
+            target: aarch64-unknown-linux-musl
+
+          - os_name: Linux-armv7
+            os: ubuntu-24.04
+            target: armv7-unknown-linux-musleabihf
+
+          # ── macOS ──────────────────────────────────────────────────────────────
+          - os_name: macOS-x86_64
+            os: macos-latest
+            target: x86_64-apple-darwin
+
+          - os_name: macOS-aarch64
+            os: macos-latest
+            target: aarch64-apple-darwin
+
+          # ── Windows ───────────────────────────────────────────────────────────
+          - os_name: Windows-x86_64
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+
+          - os_name: Windows-aarch64
+            os: windows-latest
+            target: aarch64-pc-windows-msvc
+
+    runs-on: ${{ matrix.platform.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Cross-compiles the binary for the target triple; strips the binary to
+      # reduce size.  Uses QEMU under the hood for non-native targets.
+      - name: Build binary
+        uses: houseabsolute/actions-rust-cross@v0
+        with:
+          target: ${{ matrix.platform.target }}
+          args: "--locked --release"
+          strip: true
+
+      # Packages the binary (+ README + LICENSE) into a tarball/zip, generates
+      # a SHA-256 checksum, uploads both as workflow artifacts, and – when this
+      # run is for a v* tag – creates / updates a GitHub Release and attaches
+      # the archive and checksum as release assets.
+      - name: Package and publish release
+        uses: houseabsolute/actions-rust-release@v0
+        with:
+          executable-name: bf-tools
+          target: ${{ matrix.platform.target }}
+          # No Changes.md in this repo; omit the changelog from the release.
+          changes-file: ""
+          extra-files: |
+            README.md
+            LICENSE
+
