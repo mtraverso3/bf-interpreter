@@ -7,6 +7,7 @@ use colored::Colorize;
 
 mod compile_arm;
 mod compile_llvm;
+mod compress;
 mod interpreter;
 mod io_utils;
 mod parser;
@@ -75,6 +76,18 @@ enum Command {
         #[arg(short, long, value_enum, default_value = "llvm")]
         target: Target,
     },
+
+    /// Minify a Brainfuck source program by removing non-instruction characters
+    /// and minimizing redundant +/- instruction runs.
+    Minify {
+        /// Path to the Brainfuck source file.
+        #[arg(short, long)]
+        input: String,
+
+        /// Optional file to write the minified output to. Defaults to stdout.
+        #[arg(short, long)]
+        output: Option<String>,
+    },
 }
 
 fn main() {
@@ -107,6 +120,11 @@ fn main() {
                 Target::Llvm => compile_llvm::compile_llvm(&nodes, output, size, wrapping),
                 Target::Arm => compile_arm::compile_arm(&nodes, output, size, wrapping),
             }
+        }
+        Command::Minify { input, output } => {
+            let source = read_program(&input);
+            let nodes = parse(&source);
+            compress::compress(&nodes, output);
         }
     }
 }

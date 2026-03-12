@@ -1,9 +1,10 @@
 ## Brainfuck Interpreter & Compiler
 
-This repository contains a Brainfuck CLI with two tools:
+This repository contains a Brainfuck CLI with three tools:
 
 - `interpret`: run Brainfuck programs directly.
 - `compile`: compile Brainfuck programs to either LLVM IR or AArch64 Linux assembly.
+- `minify`: removes non-Brainfuck characters and shrink redundant `+/-` runs.
 
 
 ### Building

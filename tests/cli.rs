@@ -478,3 +478,72 @@ fn compile_size_zero_fails_validation() -> Result<(), Box<dyn std::error::Error>
     Ok(())
 }
 
+// ── compress ─────────────────────────────────────────────────────────────────
+
+#[test]
+fn compress_strips_non_instruction_characters() -> Result<(), Box<dyn std::error::Error>> {
+    let file = assert_fs::NamedTempFile::new("comments.bf")?;
+    file.write_str("hello + world > [ - ] .")?;
+
+    let mut cmd = Command::cargo_bin("bf-tools")?;
+    cmd.args(["compress", "--input", file.path().to_str().unwrap()]);
+    cmd.assert().success().stdout(predicate::eq("+>[-]."));
+    Ok(())
+}
+
+#[test]
+fn compress_reduces_redundant_plus_minus_runs() -> Result<(), Box<dyn std::error::Error>> {
+    let file = assert_fs::NamedTempFile::new("reduce.bf")?;
+    file.write_str("+++-")?;
+
+    let mut cmd = Command::cargo_bin("bf-tools")?;
+    cmd.args(["compress", "--input", file.path().to_str().unwrap()]);
+    cmd.assert().success().stdout(predicate::eq("++"));
+    Ok(())
+}
+
+#[test]
+fn compress_can_choose_shorter_direction_for_large_delta() -> Result<(), Box<dyn std::error::Error>> {
+    let file = assert_fs::NamedTempFile::new("large-delta.bf")?;
+    file.write_str(&"+".repeat(200))?;
+
+    let mut cmd = Command::cargo_bin("bf-tools")?;
+    cmd.args(["compress", "--input", file.path().to_str().unwrap()]);
+    cmd.assert().success().stdout(predicate::eq("-".repeat(56)));
+    Ok(())
+}
+
+#[test]
+fn compress_output_to_file() -> Result<(), Box<dyn std::error::Error>> {
+    let input = assert_fs::NamedTempFile::new("input.bf")?;
+    input.write_str("abc++--.xyz")?;
+
+    let out = assert_fs::NamedTempFile::new("out.bf")?;
+
+    let mut cmd = Command::cargo_bin("bf-tools")?;
+    cmd.args([
+        "compress",
+        "--input",
+        input.path().to_str().unwrap(),
+        "--output",
+        out.path().to_str().unwrap(),
+    ]);
+    cmd.assert().stdout(predicate::str::is_empty()).success();
+
+    out.assert(predicate::eq("."));
+    Ok(())
+}
+
+#[test]
+fn compress_unmatched_open_bracket_fails() -> Result<(), Box<dyn std::error::Error>> {
+    let file = assert_fs::NamedTempFile::new("bad-open-compress.bf")?;
+    file.write_str("+[")?;
+
+    let mut cmd = Command::cargo_bin("bf-tools")?;
+    cmd.args(["compress", "--input", file.path().to_str().unwrap()]);
+    cmd.assert()
+        .failure()
+        .stderr(predicate::str::contains("unclosed"));
+    Ok(())
+}
+
